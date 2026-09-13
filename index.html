@@ -58,8 +58,6 @@
   #monthly-table th{font-size:9.5px;padding:7px 5px;white-space:normal;line-height:1.25}
   #monthly-table td{padding:8px 5px;font-size:12px;white-space:nowrap}
   th{text-align:left;font-size:12px;color:var(--dim);font-weight:600;padding:9px 8px;border-bottom:1px solid var(--line);white-space:nowrap}
-  .actions-col{position:sticky;right:0;background:var(--panel);box-shadow:-8px 0 8px -8px rgba(0,0,0,.4)}
-  th.actions-col{background:var(--panel);z-index:2}
   td{padding:11px 8px;border-bottom:1px solid var(--line);font-size:13px;white-space:nowrap}
   td.num,th.num{text-align:right;font-family:var(--f-mono)}
   tr.clickable{cursor:pointer;transition:background .12s}
@@ -651,7 +649,7 @@
       <div class="card stat"><div class="lbl">Guadagno di oggi</div><div class="big pos" id="s-today" data-testid="s-today">€ 0,00</div></div>
       <div class="card stat"><div class="lbl">Profitto medio</div><div class="big" id="s-avg">€ 0,00</div></div>
     </div>
-    <div class="card" style="overflow-x:auto">
+    <div class="card">
       <div style="display:flex;align-items:flex-end;gap:12px;flex-wrap:wrap;margin-bottom:16px">
         <div class="field" style="max-width:170px;margin-bottom:0"><label>Da</label><input type="date" id="mv-from" data-testid="mv-from"></div>
         <div class="field" style="max-width:170px;margin-bottom:0"><label>A</label><input type="date" id="mv-to" data-testid="mv-to"></div>
@@ -672,7 +670,7 @@
       <table>
         <thead><tr>
           <th>Data</th><th>ID</th><th>Book</th><th>Tipologia</th><th>Gioco</th><th>Info</th>
-          <th class="num">Iniziale</th><th class="num">Finale</th><th class="num">Bonus</th><th class="num">Ricaricato</th><th class="num">Profitto</th><th>Note</th><th class="actions-col"></th>
+          <th class="num">Iniziale</th><th class="num">Finale</th><th class="num">Bonus</th><th class="num">Ricaricato</th><th class="num">Profitto</th><th>Note</th><th></th>
         </tr></thead>
         <tbody id="moves-rows" data-testid="moves-rows"></tbody>
       </table>
@@ -1562,8 +1560,8 @@
         `<td class="num" style="color:var(--amber)">${fmt(parseFloat(m.bonus)||0)}</td>`+
         `<td class="num"${(parseFloat(m.reload)||0)?' style="color:var(--blue)"':''}>${fmt(parseFloat(m.reload)||0)}</td>`+
         `<td class="num ${pending?'':(p>=0?'pos':'neg')}">${pending?'in sospeso':fmt(p)}</td>`+
-        `<td style="white-space:normal;max-width:170px">${esc(m.notes)}</td>`+
-        `<td class="actions-col" style="white-space:nowrap">${pending?`<button class="stbtn book" data-mgwin="${m.uid}" title="Segna vinta">V</button><button class="stbtn banca" data-mglose="${m.uid}" title="Segna persa">P</button>`:''}<button class="iconbtn" data-edit="${m.uid}" title="Modifica">✎</button><button class="iconbtn del" data-del="${m.uid}" title="Elimina">✕</button></td>`;
+        `<td style="white-space:nowrap">${esc(m.notes)}</td>`+
+        `<td style="white-space:nowrap">${pending?`<button class="stbtn book" data-mgwin="${m.uid}" title="Segna vinta">V</button><button class="stbtn banca" data-mglose="${m.uid}" title="Segna persa">P</button>`:''}<button class="iconbtn" data-edit="${m.uid}" title="Modifica">✎</button><button class="iconbtn del" data-del="${m.uid}" title="Elimina">✕</button></td>`;
       tr.querySelector('[data-del]').addEventListener('click',e=>{e.stopPropagation();if(confirm('Eliminare questo movimento?')){moves=moves.filter(x=>x.uid!==m.uid);save();renderMoves();}});
       tr.querySelector('[data-edit]').addEventListener('click',e=>{e.stopPropagation();isMg?openMaggiorata(m.uid):openSingle(m.uid);});
       const winBtn=tr.querySelector('[data-mgwin]');if(winBtn)winBtn.addEventListener('click',e=>{e.stopPropagation();markMaggiorata(m.uid,'v');renderDraftsBadge();});
