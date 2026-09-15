@@ -1023,6 +1023,15 @@
       <p class="note" id="autobk-status">Nessuna cartella selezionata.</p>
     </div>
     <div class="card" style="margin-bottom:20px">
+      <h2><span class="dot"></span>Credenziali locali (mai su Google Sheets)</h2>
+      <p class="sub">Username/password dei book, password PayPal, PIN e dati carta non vengono mai caricati su Google Sheets, quindi su un altro dispositivo restano vuoti. Qui puoi salvarli in un file a parte, nella stessa cartella locale scelta sopra per il backup — il tracker lo legge da solo su ogni dispositivo dove hai autorizzato quella cartella, senza mai passare da internet. Per portarlo su un altro dispositivo devi copiare tu il file (chiavetta, cavo, cartella privata) nella cartella lì autorizzata.</p>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:0">
+        <button class="btn" id="cred-export" data-testid="cred-export">Salva credenziali su file locale</button>
+        <button class="btn ghost" id="cred-reload" data-testid="cred-reload">Ricarica ora da file</button>
+      </div>
+      <p class="note" id="cred-status">Scegli prima una cartella nella sezione sopra.</p>
+    </div>
+    <div class="card" style="margin-bottom:20px">
       <h2><span class="dot"></span>Google Sheets — sincronizza i dati</h2>
       <p class="sub">Tieni il file qui sul PC come sempre, ma con i dati salvati su un tuo Google Sheet: apribile e sincronizzato da qualunque dispositivo, telefono incluso. Ogni persona che usa questo file configura il PROPRIO account — nessun dato passa da qui, solo dal tuo browser a Google.</p>
       <div class="field">
@@ -2195,6 +2204,7 @@
           if($('autobk-enabled').checked)await autobkWrite();
           checkPendingSaldi();
           if(!pendingSaldiTimer)pendingSaldiTimer=setInterval(checkPendingSaldi,25000);
+          credLoad(true);
         }else{
           autobkStatus(`Cartella "${h.name}" salvata, ma il browser chiede una riconferma questa sessione: premi "Salva ora" per riattivarla.`);
         }
@@ -2265,6 +2275,57 @@
     clearTimeout(backupTimer);
     backupTimer=setTimeout(autobkWrite,2000);
   }
+
+  // ---- credenziali locali: file separato, mai sincronizzato, nella stessa cartella del backup ----
+  function credStatus(msg){const el=$('cred-status');if(el)el.textContent=msg;}
+  async function credExport(){
+    if(!FS_SUPPORTED||!backupDir){credStatus('Scegli prima una cartella nella sezione sopra.');return;}
+    try{
+      let perm=await backupDir.queryPermission({mode:'readwrite'});
+      if(perm!=='granted')perm=await backupDir.requestPermission({mode:'readwrite'});
+      if(perm!=='granted'){credStatus('Permesso non concesso dal browser.');return;}
+      const out={};
+      ids.forEach(x=>{
+        const entry={pp_pass:x.pp_pass||'',pin:x.pin||'',cc_num:x.cc_num||'',cc_sca:x.cc_sca||'',cc_cvv:x.cc_cvv||'',books:{}};
+        (x.books||[]).forEach(b=>{if(b.book)entry.books[b.book]={username:b.username||'',password:b.password||''};});
+        out[x.label]=entry;
+      });
+      const fh=await backupDir.getFileHandle('credenziali-locali.json',{create:true});
+      const w=await fh.createWritable();
+      await w.write(JSON.stringify(out,null,2));
+      await w.close();
+      credStatus(`Salvato in "${backupDir.name}/credenziali-locali.json" alle ${new Date().toLocaleTimeString('it-IT')}.`);
+    }catch(e){credStatus('Salvataggio non riuscito: riprova.');}
+  }
+  async function credLoad(silent){
+    if(!FS_SUPPORTED||!backupDir){if(!silent)credStatus('Scegli prima una cartella nella sezione sopra.');return;}
+    try{
+      let perm=await backupDir.queryPermission({mode:'readwrite'});
+      if(perm!=='granted'){if(silent)return;perm=await backupDir.requestPermission({mode:'readwrite'});}
+      if(perm!=='granted'){if(!silent)credStatus('Permesso non concesso dal browser.');return;}
+      let fh;
+      try{fh=await backupDir.getFileHandle('credenziali-locali.json',{create:false});}
+      catch(e){if(!silent)credStatus('Nessun file "credenziali-locali.json" trovato in questa cartella.');return;}
+      const file=await fh.getFile();
+      const data=JSON.parse(await file.text());
+      let applied=0;
+      ids.forEach(x=>{
+        const entry=data[x.label];if(!entry)return;
+        ['pp_pass','pin','cc_num','cc_sca','cc_cvv'].forEach(f=>{if(entry[f])x[f]=entry[f];});
+        (x.books||[]).forEach(b=>{
+          const be=entry.books&&entry.books[b.book];if(!be)return;
+          if(be.username)b.username=be.username;
+          if(be.password)b.password=be.password;
+        });
+        applied++;
+      });
+      save();
+      if(!$('anag').classList.contains('hidden'))renderAnag();
+      credStatus(`Credenziali applicate a ${applied} ID, ultimo file del ${new Date(file.lastModified).toLocaleString('it-IT')}.`);
+    }catch(e){if(!silent)credStatus('Lettura non riuscita: riprova.');}
+  }
+  $('cred-export').addEventListener('click',credExport);
+  $('cred-reload').addEventListener('click',()=>credLoad(false));
 
   // ===================================================================
   // ============ GOOGLE SHEETS — sincronizzazione dati =================
