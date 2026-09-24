@@ -78,6 +78,10 @@
   #monthly-table th{font-size:9.5px;padding:8px 6px;white-space:normal;line-height:1.25}
   #monthly-table td{padding:9px 6px;font-size:12px;white-space:nowrap}
   th{text-align:left;font-size:10.5px;text-transform:uppercase;letter-spacing:.07em;color:var(--dim);font-weight:700;padding:10px 10px;border-bottom:1px solid var(--line);white-space:nowrap}
+  th[data-sort]{cursor:pointer;user-select:none}
+  th[data-sort]:hover{color:var(--txt)}
+  th[data-sort].sort-active{color:var(--accent)}
+  th[data-sort] .sort-arrow{margin-left:4px;font-size:9px}
   td{padding:13px 10px;border-bottom:1px solid var(--line);font-size:13px;white-space:nowrap}
   tbody tr:last-child td{border-bottom:none}
   td.num,th.num{text-align:right;font-family:var(--f-mono);font-variant-numeric:tabular-nums}
@@ -796,8 +800,8 @@
       <div id="mv-pane-matched" class="mpane">
         <table>
           <thead><tr>
-            <th>Data</th><th>ID</th><th>Book</th><th>Tipologia</th><th>Gioco</th><th>Info</th>
-            <th class="num">Iniziale</th><th class="num">Finale</th><th class="num">Bonus</th><th class="num">Ricaricato</th><th class="num">Profitto</th><th>Note</th><th></th>
+            <th data-sort="date">Data</th><th data-sort="pid">ID</th><th data-sort="book">Book</th><th data-sort="type">Tipologia</th><th data-sort="game">Gioco</th><th data-sort="info">Info</th>
+            <th class="num" data-sort="start">Iniziale</th><th class="num" data-sort="end">Finale</th><th class="num" data-sort="bonus">Bonus</th><th class="num" data-sort="reload">Ricaricato</th><th class="num" data-sort="profit">Profitto</th><th>Note</th><th></th>
           </tr></thead>
           <tbody id="moves-rows" data-testid="moves-rows"></tbody>
         </table>
@@ -807,8 +811,8 @@
       <div id="mv-pane-maggiorate" class="mpane hidden">
         <table>
           <thead><tr>
-            <th>Data</th><th>ID</th><th>Book</th><th>Gioco</th><th>Info</th>
-            <th class="num">Iniziale</th><th class="num">Finale</th><th class="num">Bonus</th><th class="num">Ricaricato</th><th class="num">Profitto</th><th>Note</th><th></th>
+            <th data-sort="date">Data</th><th data-sort="pid">ID</th><th data-sort="book">Book</th><th data-sort="game">Gioco</th><th data-sort="info">Info</th>
+            <th class="num" data-sort="stake">Iniziale</th><th class="num" data-sort="quota">Finale</th><th class="num" data-sort="bonus">Bonus</th><th class="num" data-sort="reload">Ricaricato</th><th class="num" data-sort="profit">Profitto</th><th>Note</th><th></th>
           </tr></thead>
           <tbody id="mg-moves-rows" data-testid="mg-moves-rows"></tbody>
         </table>
@@ -819,9 +823,9 @@
         <p class="sub" style="margin-top:0">Le righe con scadenza già passata e senza Bonus Monetizzato ancora inserito salgono in cima, come promemoria.</p>
         <table>
           <thead><tr>
-            <th>Data</th><th>ID</th><th>Book</th><th>Scadenza</th>
-            <th class="num">Saldo iniziale</th><th class="num">Saldo finale</th><th class="num">Netto Qual.</th>
-            <th class="num">Real atteso</th><th class="num">Fun atteso</th><th class="num">Bonus Monetizzato</th><th class="num">Profitto</th><th>Note</th><th></th>
+            <th data-sort="date">Data</th><th data-sort="pid">ID</th><th data-sort="book">Book</th><th data-sort="scadenza">Scadenza</th>
+            <th class="num" data-sort="start">Saldo iniziale</th><th class="num" data-sort="end">Saldo finale</th><th class="num" data-sort="netto">Netto Qual.</th>
+            <th class="num" data-sort="realatteso">Real atteso</th><th class="num" data-sort="funatteso">Fun atteso</th><th class="num" data-sort="bonusmon">Bonus Monetizzato</th><th class="num" data-sort="profit">Profitto</th><th>Note</th><th></th>
           </tr></thead>
           <tbody id="rs-moves-rows" data-testid="rs-moves-rows"></tbody>
         </table>
@@ -1786,6 +1790,46 @@
     renderMoves();
   }));
 
+  // ordinamento cliccando le intestazioni, uno stato indipendente per ciascuna delle 3 schede
+  const mvSort={matched:{col:'date',dir:-1},maggiorate:{col:'date',dir:-1},rimborso:{col:'date',dir:-1}};
+  function mvSortValue(m,col){
+    switch(col){
+      case 'profit': return profitOf(m);
+      case 'start': return numParse(m.start)||0;
+      case 'end': return numParse(m.end)||0;
+      case 'bonus': return numParse(m.bonus)||0;
+      case 'reload': return numParse(m.reload)||0;
+      case 'stake': return numParse(m.stake)||0;
+      case 'quota': return numParse(m.quota)||0;
+      case 'netto': return rimborsoAttesi(m).netto;
+      case 'realatteso': return rimborsoAttesi(m).realAtteso;
+      case 'funatteso': return rimborsoAttesi(m).funAtteso;
+      case 'bonusmon': return numParse(m.rsBonusMon)||0;
+      case 'date': case 'scadenza': return m[col]||'';
+      default: return (m[col]||'').toString().toLowerCase();
+    }
+  }
+  function mvApplySort(arr,col,dir){
+    return [...arr].sort((a,b)=>{
+      const va=mvSortValue(a,col),vb=mvSortValue(b,col);
+      if(va<vb)return -1*dir;if(va>vb)return 1*dir;return 0;
+    });
+  }
+  function mvUpdateSortHeaders(){
+    const s=mvSort[mvActiveTab];
+    document.querySelectorAll('#mv-pane-'+mvActiveTab+' th[data-sort]').forEach(th=>{
+      const active=th.dataset.sort===s.col;
+      th.classList.toggle('sort-active',active);
+      th.querySelectorAll('.sort-arrow').forEach(x=>x.remove());
+      if(active){const sp=document.createElement('span');sp.className='sort-arrow';sp.textContent=s.dir>0?'▲':'▼';th.appendChild(sp);}
+    });
+  }
+  document.querySelectorAll('th[data-sort]').forEach(th=>th.addEventListener('click',()=>{
+    const s=mvSort[mvActiveTab];
+    if(s.col===th.dataset.sort)s.dir=-s.dir;else{s.col=th.dataset.sort;s.dir=1;}
+    renderMoves();
+  }));
+
   function fillSelect(el,arr,withEmpty){
     el.innerHTML=(withEmpty?'<option value=""></option>':'')+arr.map(o=>`<option value="${esc(o)}">${o===''?'—':esc(o)}</option>`).join('');
   }
@@ -1851,23 +1895,22 @@
       (!fSearch||[m.pid,m.book,m.type,m.game,m.info,m.notes].some(v=>String(v||'').toLowerCase().includes(fSearch)))
     );
 
+    const sortState=mvSort[mvActiveTab];
     if(mvActiveTab==='rimborso'){
       const today=new Date().toISOString().slice(0,10);
       const needsAttn=m=>m.scadenza&&m.scadenza<today&&(m.rsBonusMon===undefined||m.rsBonusMon==='');
-      displayed=[...displayed].sort((a,b)=>{
-        const an=needsAttn(a),bn=needsAttn(b);
-        if(an!==bn)return an?-1:1;
-        if(an&&bn)return (a.scadenza||'').localeCompare(b.scadenza||'');
-        return (b.date||'').localeCompare(a.date||'');
-      });
+      const overdue=mvApplySort(displayed.filter(needsAttn),sortState.col,sortState.dir);
+      const rest=mvApplySort(displayed.filter(m=>!needsAttn(m)),sortState.col,sortState.dir);
+      displayed=[...overdue,...rest];
       renderRimborsoRows(displayed);
     } else if(mvActiveTab==='maggiorate'){
-      displayed=[...displayed].sort((a,b)=>(b.date||'').localeCompare(a.date||''));
+      displayed=mvApplySort(displayed,sortState.col,sortState.dir);
       renderMaggiorateRows(displayed);
     } else {
-      displayed=[...displayed].sort((a,b)=>(b.date||'').localeCompare(a.date||''));
+      displayed=mvApplySort(displayed,sortState.col,sortState.dir);
       renderMatchedRows(displayed);
     }
+    mvUpdateSortHeaders();
 
     $('mv-filter-count').textContent=(from||to||fTipo||fBook||fSearch)?`${displayed.length} di ${scopedMoves.length} movimenti`:'';
 
