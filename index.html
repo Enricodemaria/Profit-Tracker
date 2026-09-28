@@ -79,6 +79,15 @@
   .rs-child td:first-child{padding-left:24px}
   .rsm-table input{max-width:110px}
   .rsm-table th,.rsm-table td{padding-left:6px;padding-right:6px}
+  /* movimenti compatti: note ed elenchi ID lunghi si accorciano (testo completo passandoci sopra),
+     intestazioni su due righe, etichetta DA CONTROLLARE sotto la data */
+  .note-cell{max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .grp-ids{display:block;max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  #moves th{white-space:normal;line-height:1.25;vertical-align:bottom;padding:8px 6px}
+  #moves td{padding:9px 6px}
+  /* ultima sicurezza: su schermi stretti la tabella scorre dentro il suo riquadro, la pagina non esce di lato */
+  #mv-pane-matched,#mv-pane-maggiorate,#mv-pane-rimborso{overflow-x:auto}
+  #mv-pane-rimborso .rs-warn-badge{display:block;width:max-content;margin:3px 0 0;font-size:9.5px;padding:2px 6px;letter-spacing:.2px}
   .rs-warn-badge{display:inline-block;font-size:10px;font-weight:700;letter-spacing:.3px;text-transform:uppercase;background:var(--amber);color:#1a1400;border-radius:999px;padding:2px 8px;margin-left:6px;white-space:nowrap}
   .grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:18px}
   .grid2{display:grid;grid-template-columns:1fr 1fr;gap:20px}
@@ -1670,6 +1679,7 @@
   }
   const compact=x=>{if(!isFinite(x))x=0;return (x<0?'-':'')+Math.abs(x).toLocaleString('it-IT',{maximumFractionDigits:0})+'€';};
   const esc=s=>(s==null?'':s.toString()).replace(/[<>&]/g,c=>({'<':'&lt;','>':'&gt;','&':'&amp;'}[c]));
+  const escA=s=>esc(s).replace(/"/g,'&quot;');
   const uid=()=>Date.now().toString(36)+Math.random().toString(36).slice(2,7);
 
   const DEFAULT_TIPOS=['Ricorrente','Esclusiva','Benvenuto','Profilazione','Abbonamento','Errore','Maggiorate','Altro'];
@@ -2129,7 +2139,7 @@
         `<td class="num" style="color:var(--amber)">${fmt(numParse(m.bonus)||0)}</td>`+
         `<td class="num"${(numParse(m.reload)||0)?' style="color:var(--blue)"':''}>${fmt(numParse(m.reload)||0)}</td>`+
         `<td class="num ${p>=0?'pos':'neg'}">${fmt(p)}</td>`+
-        `<td style="white-space:nowrap">${esc(m.notes)}</td>`+
+        `<td class="note-cell" title="${escA(m.notes)}">${esc(m.notes)}</td>`+
         `<td style="white-space:nowrap"><button class="iconbtn" data-edit="${m.uid}" title="Modifica">✎</button><button class="iconbtn del" data-del="${m.uid}" title="Elimina">✕</button></td>`;
       tr.querySelector('[data-del]').addEventListener('click',e=>{e.stopPropagation();if(confirm('Eliminare questo movimento?')){moves=moves.filter(x=>x.uid!==m.uid);save();renderMoves();}});
       tr.querySelector('[data-edit]').addEventListener('click',e=>{e.stopPropagation();openSingle(m.uid);});
@@ -2149,13 +2159,13 @@
     const pids=[...new Set(g.map(m=>m.pid))];
     const lbl=`${g.length} ID`;
     const tr=document.createElement('tr');tr.className='clickable rs-group'+(open?' rs-open':'');
-    tr.innerHTML=`<td>${esc(f.date)}</td><td><b>${lbl}</b> <span class="note" style="margin:0">${esc(pids.join(', '))}</span></td><td>${esc(f.book)}</td><td>${esc(f.type)}</td><td>${esc(f.game)}</td><td>${esc(f.info)}</td>`+
+    tr.innerHTML=`<td>${esc(f.date)}</td><td><b>${lbl}</b> <span class="note grp-ids" style="margin:0" title="${escA(pids.join(', '))}">${esc(pids.join(', '))}</span></td><td>${esc(f.book)}</td><td>${esc(f.type)}</td><td>${esc(f.game)}</td><td>${esc(f.info)}</td>`+
       `<td class="num">${fmt(sum(m=>n(m.start)))}</td>`+
       `<td class="num">${fmt(sum(m=>n(m.end)))}</td>`+
       `<td class="num" style="color:var(--amber)">${fmt(sum(m=>n(m.bonus)))}</td>`+
       `<td class="num"${rel?' style="color:var(--blue)"':''}>${fmt(rel)}</td>`+
       `<td class="num ${p>=0?'pos':'neg'}">${fmt(p)}</td>`+
-      `<td style="white-space:nowrap">${esc(f.notes)}</td>`+
+      `<td class="note-cell" title="${escA(f.notes)}">${esc(f.notes)}</td>`+
       `<td style="white-space:nowrap"><button class="iconbtn" data-testid="mb-group-toggle" title="${open?'Nascondi':'Mostra'} le singole ID">${open?'▾':'▸'}</button></td>`;
     tr.addEventListener('click',()=>{open?mbExpanded.delete(k):mbExpanded.add(k);renderMoves();});
     return tr;
@@ -2197,7 +2207,7 @@
         `<td class="num" style="color:var(--amber)">${fmt(numParse(m.bonus)||0)}</td>`+
         `<td class="num"${(numParse(m.reload)||0)?' style="color:var(--blue)"':''}>${fmt(numParse(m.reload)||0)}</td>`+
         `<td class="num ${pending?'':(p>=0?'pos':'neg')}">${pending?'in sospeso':fmt(p)}</td>`+
-        `<td style="white-space:nowrap">${esc(m.notes)}</td>`+
+        `<td class="note-cell" title="${escA(m.notes)}">${esc(m.notes)}</td>`+
         `<td style="white-space:nowrap">${pending?`<button class="stbtn book" data-mgwin="${m.uid}" title="Segna vinta">V</button><button class="stbtn banca" data-mglose="${m.uid}" title="Segna persa">P</button>`:''}<button class="iconbtn" data-edit="${m.uid}" title="Modifica">✎</button><button class="iconbtn del" data-del="${m.uid}" title="Elimina">✕</button></td>`;
       tr.querySelector('[data-del]').addEventListener('click',e=>{e.stopPropagation();if(confirm('Eliminare questo movimento?')){moves=moves.filter(x=>x.uid!==m.uid);save();renderMoves();}});
       tr.querySelector('[data-edit]').addEventListener('click',e=>{e.stopPropagation();openMaggiorata(m.uid);});
@@ -2228,8 +2238,8 @@
         `<td class="num">${bmSet?fmt(numParse(m.rsBonusMon)):(att.netto>=0?'<span class="note" style="margin:0">non dovuto</span>':'<span class="note" style="margin:0">da inserire</span>')}</td>`+
         `<td class="num ${p>=0?'pos':'neg'}">${fmt(p)}</td>`+
         `<td class="num" style="color:var(${evS===null?'--dim':evS>=0?'--green':'--red'})">${evS===null?'–':fmtSigned(evS)}</td>`+
-        `<td style="white-space:nowrap">${esc(m.notes)}</td>`+
-        `<td style="white-space:nowrap">${!child&&att.netto<0?'<button class="btn ghost rs-mon-btn" data-testid="rs-mon-btn" title="Monetizza bonus" style="padding:4px 10px;font-size:12px;margin-right:6px">Monetizza bonus</button>':''}<button class="iconbtn" data-edit="${m.uid}" title="Modifica">✎</button><button class="iconbtn del" data-del="${m.uid}" title="Elimina">✕</button></td>`;
+        `<td class="note-cell" title="${escA(m.notes)}">${esc(m.notes)}</td>`+
+        `<td style="white-space:nowrap">${!child&&att.netto<0?'<button class="btn ghost rs-mon-btn" data-testid="rs-mon-btn" title="Monetizza bonus" style="padding:4px 9px;font-size:12px;margin-right:4px">Monetizza</button>':''}<button class="iconbtn" data-edit="${m.uid}" title="Modifica">✎</button><button class="iconbtn del" data-del="${m.uid}" title="Elimina">✕</button></td>`;
       tr.querySelector('[data-del]').addEventListener('click',e=>{e.stopPropagation();if(confirm('Eliminare questo movimento?')){moves=moves.filter(x=>x.uid!==m.uid);save();renderMoves();}});
       tr.querySelector('[data-edit]').addEventListener('click',e=>{e.stopPropagation();openRimborso(m.uid);});
       tr.addEventListener('click',()=>openRimborso(m.uid));
@@ -2252,7 +2262,7 @@
     const open=rsExpanded.has(k),f=g[0];
     const pids=[...new Set(g.map(m=>m.pid))].join(', ');
     const tr=document.createElement('tr');tr.className='clickable rs-group'+(overdue?' rs-overdue-row':'')+(open?' rs-open':'');
-    tr.innerHTML=`<td>${esc(f.date)}</td><td><b>${g.length} ID</b> <span class="note" style="margin:0">${esc(pids)}</span></td><td>${esc(f.book)}</td>`+
+    tr.innerHTML=`<td>${esc(f.date)}</td><td><b>${g.length} ID</b> <span class="note grp-ids" style="margin:0" title="${escA(pids)}">${esc(pids)}</span></td><td>${esc(f.book)}</td>`+
       `<td>${f.scadenza?esc(f.scadenza):'–'}${overdue?' <span class="rs-warn-badge" title="Almeno una ID ha la scadenza passata senza Bonus Monetizzato">Da controllare</span>':''}</td>`+
       `<td class="num">${fmt(sum(m=>numParse(m.start)||0))}</td>`+
       `<td class="num">${fmt(sum(m=>numParse(m.end)||0))}</td>`+
@@ -2262,8 +2272,8 @@
       `<td class="num">${missing?`<span class="note" style="margin:0">da inserire (${missing})</span>`:fmt(bm)}</td>`+
       `<td class="num ${p>=0?'pos':'neg'}">${fmt(p)}</td>`+
       `<td class="num" style="color:var(${ev===null?'--dim':ev>=0?'--green':'--red'})">${ev===null?'–':fmtSigned(ev)}</td>`+
-      `<td style="white-space:nowrap">${esc(f.notes)}</td>`+
-      `<td style="white-space:nowrap">${g.some(m=>rimborsoAttesi(m).netto<0)?'<button class="btn ghost rs-mon-btn" data-testid="rs-mon-btn" title="Monetizza bonus" style="padding:4px 10px;font-size:12px;margin-right:6px">Monetizza bonus</button>':''}<button class="iconbtn" data-testid="rs-group-toggle" title="${open?'Nascondi':'Mostra'} le singole ID">${open?'▾':'▸'}</button></td>`;
+      `<td class="note-cell" title="${escA(f.notes)}">${esc(f.notes)}</td>`+
+      `<td style="white-space:nowrap">${g.some(m=>rimborsoAttesi(m).netto<0)?'<button class="btn ghost rs-mon-btn" data-testid="rs-mon-btn" title="Monetizza bonus" style="padding:4px 9px;font-size:12px;margin-right:4px">Monetizza</button>':''}<button class="iconbtn" data-testid="rs-group-toggle" title="${open?'Nascondi':'Mostra'} le singole ID">${open?'▾':'▸'}</button></td>`;
     const monB=tr.querySelector('.rs-mon-btn');if(monB)monB.addEventListener('click',e=>{e.stopPropagation();openRsMonetize(g.filter(m=>rimborsoAttesi(m).netto<0));});
     tr.addEventListener('click',()=>{open?rsExpanded.delete(k):rsExpanded.add(k);renderMoves();});
     return tr;
@@ -2904,7 +2914,7 @@
       const kindTag=cashKindOf(m)==='conto'?'<span class="note" style="margin:0">conto</span> ':'';
       tr.innerHTML=`<td>${esc(m.date)}</td><td>${esc(m.pid)}</td><td>${kindTag}${esc(cashTarget(m))}</td><td>${esc(CASH_LABEL[m.type]||m.type)}</td>`+
         `<td class="num ${cls}">${sign}${fmt(Math.abs(numParse(m.amount)||0))}</td>`+
-        `<td style="white-space:normal;max-width:170px">${esc(m.notes)}</td>`+
+        `<td class="note-cell" title="${escA(m.notes)}">${esc(m.notes)}</td>`+
         `<td><button class="iconbtn del" data-cashdel="${m.uid}" title="Elimina">✕</button></td>`;
       tr.querySelector('[data-cashdel]').addEventListener('click',()=>{
         const linked=m.linkId?cashmoves.filter(x=>x.linkId===m.linkId):[m];
