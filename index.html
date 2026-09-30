@@ -1,7 +1,14 @@
 <!DOCTYPE html>
 <html lang="it"><head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Profit">
+<meta name="theme-color" content="#0b0f16">
 <title>Profit Tracker — Matched Betting</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='18' fill='%235b7cc9'/%3E%3Ctext x='32' y='45' font-family='Helvetica,Arial,sans-serif' font-size='38' font-weight='700' fill='%23081018' text-anchor='middle'%3EP%3C/text%3E%3C/svg%3E">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -376,6 +383,129 @@
   .dragcard>div[id^="chart-"],.dragcard>#mg-chart-cum{margin-top:2px}
 
   </style>
+<style>
+  /* ================= TELEFONO (fino a 680px): il PC non cambia =================
+     stesso adattamento della vecchia versione mobile + accorgimenti del tracker Demà */
+  .mobile-only{display:none!important}
+  body{padding-top:env(safe-area-inset-top,0px)}
+  @media(max-width:680px){
+    .mobile-only{display:revert!important}
+    .wrap{padding:0 14px}
+    header{padding:14px 0 2px}
+    header p{display:none}
+    .brand{flex-wrap:nowrap;gap:10px}
+    .logo{width:38px;height:38px;border-radius:12px;font-size:17px}
+    .brand h1{font-size:20px;letter-spacing:-.5px}
+    .brand .side .btn{padding:7px 12px;font-size:12.5px}
+    /* numeri grandi su una riga: se non entrano si rimpiccioliscono */
+    .stat .big{white-space:nowrap}
+    /* niente scorrimento laterale della pagina (le tabelle larghe scorrono nel loro riquadro) */
+    .wrap{overflow-x:clip}
+    /* barra principale su una riga, scorrevole e fissa in alto */
+    #main-tabs{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none;position:sticky;top:env(safe-area-inset-top,0px);z-index:30;margin:12px 0 16px;border-radius:16px;background:var(--panel)}
+    #main-tabs::-webkit-scrollbar{display:none}
+    #main-tabs .tab{flex:0 0 auto;min-width:auto}
+    /* niente zoom di iPhone quando tocchi un campo */
+    input,select,textarea{font-size:16px!important}
+    /* finestre che salgono dal basso */
+    .overlay{align-items:flex-end;padding:0}
+    .modal{max-width:none!important;width:100%;border-radius:22px 22px 0 0;padding:22px 16px calc(22px + env(safe-area-inset-bottom,0px));max-height:92vh;overflow-y:auto}
+    .modal-actions{position:sticky;bottom:calc(-22px - env(safe-area-inset-bottom,0px));background:var(--panel);padding:12px 0 calc(12px + env(safe-area-inset-bottom,0px));margin-bottom:calc(-22px - env(safe-area-inset-bottom,0px))}
+
+    .card{padding:20px 16px;border-radius:16px}
+    .tabs{gap:4px}
+    .tab{min-width:auto;flex:1 1 30%;font-size:13px;padding:10px 12px}
+    #moves table thead{display:none}
+    #moves-rows tr{display:grid;grid-template-columns:1fr 1fr auto;column-gap:10px;row-gap:4px;padding:15px 16px;margin-bottom:10px;background:var(--bg2);border:1px solid var(--line);border-radius:var(--r-sm);cursor:pointer}
+    #mg-moves-rows tr{display:grid;grid-template-columns:1fr 1fr auto;column-gap:10px;row-gap:4px;padding:15px 16px;margin-bottom:10px;background:var(--bg2);border:1px solid var(--line);border-radius:var(--r-sm);cursor:pointer}
+    #rs-moves-rows tr{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr) auto;column-gap:10px;row-gap:4px;padding:15px 16px;margin-bottom:10px;background:var(--bg2);border:1px solid var(--line);border-radius:var(--r-sm);cursor:pointer}
+    #moves-rows td,#mg-moves-rows td,#rs-moves-rows td{border:none;padding:0;font-size:13px;white-space:normal!important;max-width:none!important}
+    #moves-rows td[data-label="Data"]{grid-column:1;grid-row:1;color:var(--dim);font-size:12px}
+    #moves-rows td[data-label="ID"]{grid-column:2;grid-row:1;text-align:right;font-weight:600}
+    #moves-rows td[data-label="Book"]{grid-column:1;grid-row:2;color:var(--muted)}
+    #moves-rows td[data-label="Tipologia"]{grid-column:2;grid-row:2;text-align:right;color:var(--accent);font-size:12px}
+    #moves-rows td[data-label="Gioco"],#moves-rows td[data-label="Info"],#moves-rows td[data-label="Ricaricato"]{display:none}
+    #moves-rows td[data-label="Iniziale"],#moves-rows td[data-label="Finale"]{grid-row:3;font-size:12px;color:var(--dim)}
+    #moves-rows td[data-label="Iniziale"]{grid-column:1}
+    #moves-rows td[data-label="Finale"]{grid-column:2;text-align:right}
+    #moves-rows td[data-label="Bonus"]{display:none}
+    #moves-rows td[data-label="Profitto"]{grid-column:1/3;grid-row:4;font-family:var(--f-disp);font-size:21px;font-weight:600;letter-spacing:-.6px;margin-top:5px}
+    #moves-rows td[data-label="Note"]{grid-column:1/3;grid-row:5;font-size:12px;color:var(--muted)}
+    #moves-rows td[data-label=""]{grid-column:3;grid-row:1/4;align-self:start;display:flex;flex-wrap:wrap;gap:6px;justify-content:flex-end;width:100px}
+    #moves-rows td[data-label=""] .stbtn{margin-right:0;min-width:44px;min-height:44px;padding:6px;display:grid;place-items:center}
+    #moves-rows td[data-label=""] .iconbtn{min-width:44px;min-height:44px;padding:6px;font-size:16px}
+
+    /* scheda Maggiorate (stesso schema di #moves-rows, senza Tipologia) */
+    #mg-moves-rows td[data-label="Data"]{grid-column:1;grid-row:1;color:var(--dim);font-size:12px}
+    #mg-moves-rows td[data-label="ID"]{grid-column:2;grid-row:1;text-align:right;font-weight:600}
+    #mg-moves-rows td[data-label="Book"]{grid-column:1;grid-row:2;color:var(--muted)}
+    #mg-moves-rows td[data-label="Gioco"],#mg-moves-rows td[data-label="Info"],#mg-moves-rows td[data-label="Ricaricato"]{display:none}
+    #mg-moves-rows td[data-label="Iniziale"],#mg-moves-rows td[data-label="Finale"]{grid-row:3;font-size:12px;color:var(--dim)}
+    #mg-moves-rows td[data-label="Iniziale"]{grid-column:1}
+    #mg-moves-rows td[data-label="Finale"]{grid-column:2;text-align:right}
+    #mg-moves-rows td[data-label="Bonus"]{display:none}
+    #mg-moves-rows td[data-label="Profitto"]{grid-column:1/3;grid-row:4;font-family:var(--f-disp);font-size:21px;font-weight:600;letter-spacing:-.6px;margin-top:5px}
+    #mg-moves-rows td[data-label="Note"]{grid-column:1/3;grid-row:5;font-size:12px;color:var(--muted)}
+    #mg-moves-rows td[data-label=""]{grid-column:3;grid-row:1/4;align-self:start;display:flex;flex-wrap:wrap;gap:6px;justify-content:flex-end;width:100px}
+    #mg-moves-rows td[data-label=""] .stbtn{margin-right:0;min-width:44px;min-height:44px;padding:6px;display:grid;place-items:center}
+    #mg-moves-rows td[data-label=""] .iconbtn{min-width:44px;min-height:44px;padding:6px;font-size:16px}
+
+    /* scheda Rimborso Slot (più campi: usa più righe) */
+    #rs-moves-rows td[data-label="Data"]{grid-column:1;grid-row:1;color:var(--dim);font-size:12px}
+    #rs-moves-rows td[data-label="ID"]{grid-column:2;grid-row:1;text-align:right;font-weight:600}
+    #rs-moves-rows td[data-label="Book"]{grid-column:1;grid-row:2;color:var(--muted)}
+    #rs-moves-rows td[data-label="Scadenza"]{grid-column:2;grid-row:2;text-align:right;color:var(--accent);font-size:12px}
+    #rs-moves-rows td[data-label="Saldo iniziale"],#rs-moves-rows td[data-label="Saldo finale"]{grid-row:3;font-size:12px;color:var(--dim)}
+    #rs-moves-rows td[data-label="Saldo iniziale"]{grid-column:1}
+    #rs-moves-rows td[data-label="Saldo finale"]{grid-column:2;text-align:right}
+    #rs-moves-rows td[data-label="Netto Qual."],#rs-moves-rows td[data-label="Bonus"]{grid-row:4;font-size:12px}
+    #rs-moves-rows td[data-label="Netto Qual."]{grid-column:1}
+    #rs-moves-rows td[data-label="Bonus"]{grid-column:2;text-align:right;color:var(--muted)}
+    #rs-moves-rows td[data-label="Real atteso"],#rs-moves-rows td[data-label="Fun atteso"]{grid-row:5;font-size:11px;color:var(--amber)}
+    #rs-moves-rows td[data-label="Real atteso"]{grid-column:1}
+    #rs-moves-rows td[data-label="Fun atteso"]{grid-column:2;text-align:right}
+    #rs-moves-rows td[data-label="EV"]{grid-column:1/3;grid-row:7;font-size:12px;white-space:nowrap!important}
+    #rs-moves-rows td[data-label="EV"]::before{content:"EV ";color:var(--dim);font-size:11px}
+    #rs-moves-rows td[data-label="Profitto"]{grid-column:1/3;grid-row:6;font-family:var(--f-disp);font-size:21px;font-weight:600;letter-spacing:-.6px;margin-top:5px}
+    #rs-moves-rows td[data-label="Note"]{grid-column:1/3;grid-row:8;font-size:12px;color:var(--muted)}
+    #rs-moves-rows td[data-label=""]{grid-column:3;grid-row:1/6;align-self:start;display:flex;flex-wrap:wrap;gap:6px;justify-content:flex-end;width:100px}
+    #rs-moves-rows td[data-label=""] .iconbtn{min-width:44px;min-height:44px;padding:6px;font-size:16px}
+  
+    /* Rimborso Slot: righe bonus senza campi vuoti, righe ID dei gruppi rientrate */
+    #rs-moves-rows tr.rs-bonus-row td:is([data-label="Scadenza"],[data-label="Saldo iniziale"],[data-label="Saldo finale"],[data-label="Netto Qual."],[data-label="Real atteso"],[data-label="Fun atteso"],[data-label="EV"]){display:none}
+    #rs-moves-rows tr.rs-child,#moves-rows tr.rs-child{margin-left:14px;border-style:dashed;background:rgba(255,255,255,.02)}
+    #rs-moves-rows tr.rs-child td,#moves-rows tr.rs-child td{background:none}
+    .grp-ids{display:inline;max-width:none}
+    #rs-stat-profit,#rs-stat-ev,#rs-stat-diff{white-space:nowrap}
+    .fr-table th,.fr-table td{padding-left:4px;padding-right:4px}
+    /* Passo 2 Rimborso Slot: una scheda per ID */
+    #modal-rs2 thead{display:none}
+    #rs-rows tr{display:grid;grid-template-columns:1fr 1fr;gap:8px 10px;padding:12px 0;border-bottom:1px solid var(--line)}
+    #rs-rows td{padding:0!important;border:none!important;text-align:left!important}
+    #rs-rows select,#rs-rows input{width:100%;max-width:none!important;min-width:0!important}
+    #rs-rows td:nth-child(3)::before,#rs-rows td:nth-child(4)::before,#rs-rows td:nth-child(5)::before{display:block;font-size:10.5px;color:var(--dim);font-weight:600;margin-bottom:3px}
+    #rs-rows td:nth-child(3)::before{content:'Saldo iniziale'}
+    #rs-rows td:nth-child(4)::before{content:'Saldo finale'}
+    #rs-rows td:nth-child(5)::before{content:'Bonus (se già noto)'}
+    #rs-rows .tpsl{display:flex;align-items:stretch}
+    #rs-rows td:nth-child(4){align-self:center}
+    #rs-rows td:nth-child(6){align-self:end;text-align:right!important}
+    /* "+ Bonus": una scheda per ID con i tre saldi affiancati */
+    .rb-table thead{display:none}
+    .rb-table tr{display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px 8px;padding:12px 0;border-bottom:1px solid var(--line)}
+    .rb-table td{border:none!important;padding:0!important;text-align:left!important}
+    .rb-table td:first-child{grid-column:1/-1;font-size:15px}
+    .rb-table td.rb-res{grid-column:1/-1;text-align:right!important;font-weight:700}
+    .rb-table td[data-l]::before{content:attr(data-l);display:block;font-size:10.5px;color:var(--dim);margin-bottom:3px;font-weight:600}
+    .rb-table td.rb-res::before{display:inline;margin-right:8px}
+    .rb-table input{width:100%;max-width:none;padding:8px 8px}
+    /* "Bonus da ricevere": importi sotto il nome */
+    .rsp-item{flex-wrap:wrap;row-gap:4px}
+    .rsp-item .rsp-main{flex:1 1 100%}
+    .rsp-item .rsp-amt{flex:1 1 auto;text-align:left}
+    .rsp-book .rsp-amt{flex:1 1 100%;text-align:left;order:3}
+  }
+</style>
 </head>
 <body data-mb-tracker="1">
 <div class="wrap">
@@ -830,6 +960,10 @@
         <div class="field" style="max-width:220px;margin-bottom:0"><label>Cerca</label>
           <input type="text" id="mv-search" data-testid="mv-search" placeholder="ID, note, gioco...">
         </div>
+        <div class="field mobile-only" style="max-width:170px;margin-bottom:0"><label>Ordina per</label>
+          <select id="mv-sortcol" data-testid="mv-sortcol"></select>
+        </div>
+        <button class="btn ghost mobile-only" id="mv-sortdir" data-testid="mv-sortdir" title="Inverti direzione">▼</button>
         <button class="btn ghost" id="mv-filter-clear" data-testid="mv-filter-clear">Rimuovi filtro</button>
         <span class="note" id="mv-filter-count" style="margin:0"></span>
       </div>
@@ -2174,6 +2308,31 @@
     else {rec.uid=uid();moves.unshift(rec);}
     save();renderMoves();renderDraftsBadge();$('modal-maggiorate').classList.add('hidden');
   });
+
+  // ---- telefono: etichette di colonna sulle celle (servono alle schede al posto delle tabelle) ----
+  function labelCells(id){
+    const tb=$(id);if(!tb)return;
+    const ths=[...tb.closest('table').querySelectorAll('thead th')].map(th=>{const n=th.firstChild;return (n&&n.nodeType===3?n.textContent:th.textContent).trim();});
+    tb.querySelectorAll('tr').forEach(tr=>[...tr.children].forEach((td,i)=>{if(!td.hasAttribute('data-label'))td.setAttribute('data-label',ths[i]||'');}));
+  }
+  // ---- "Ordina per" (telefono): stesse colonne delle intestazioni cliccabili ----
+  function mvSortOptionsFor(tab){
+    return [...document.querySelectorAll('#mv-pane-'+tab+' thead th[data-sort]')].map(th=>{const n=th.firstChild;return {col:th.dataset.sort,label:(n&&n.nodeType===3?n.textContent:th.textContent).trim()};});
+  }
+  function mvSyncSortUI(){
+    const s=mvSort[mvActiveTab];if(!s)return;
+    $('mv-sortcol').innerHTML=mvSortOptionsFor(mvActiveTab).map(o=>`<option value="${o.col}"${o.col===s.col?' selected':''}>${esc(o.label)}</option>`).join('');
+    $('mv-sortdir').textContent=s.dir>0?'▲':'▼';
+  }
+  $('mv-sortcol').addEventListener('change',()=>{mvSort[mvActiveTab].col=val('mv-sortcol');mvSort[mvActiveTab].dir=1;renderMoves();});
+  $('mv-sortdir').addEventListener('click',()=>{mvSort[mvActiveTab].dir=-mvSort[mvActiveTab].dir;renderMoves();});
+  // numeri grandi: rimpicciolisce il carattere finché il valore entra nella card (utile sul telefono)
+  function autoFitBig(el){
+    el.style.fontSize='';
+    const parent=el.parentElement;if(!parent)return;
+    let size=numParse(getComputedStyle(el).fontSize),guard=0;
+    while(el.scrollWidth>parent.clientWidth-4&&size>13&&guard<20){size-=1;el.style.fontSize=size+'px';guard++;}
+  }
   function renderMoves(){
     rsBIdx=null;
     const nPend=moves.filter(rsOverdue).length;$('btnRsPending').textContent=nPend?`Bonus da ricevere (${nPend})`:'Bonus da ricevere';
@@ -2208,6 +2367,8 @@
       renderMatchedRows(displayed,sortState);
     }
     mvUpdateSortHeaders();
+    ['moves-rows','mg-moves-rows','rs-moves-rows'].forEach(labelCells);
+    mvSyncSortUI();
 
     $('mv-filter-count').textContent=(from||to||fTipo||fBook||fSearch)?`${displayed.length} di ${scopedMoves.length} movimenti`:'';
 
@@ -4015,6 +4176,7 @@
     const rmb=$('r-mb');rmb.textContent=fmt(cMB);rmb.className='big '+(cMB>=0?'pos':'neg');
     const rmg=$('r-magg');rmg.textContent=fmt(cMagg);rmg.className='big '+(cMagg>=0?'pos':'neg');
     const rrs=$('r-rs');rrs.textContent=fmt(cRS);rrs.className='big '+(cRS>=0?'pos':'neg');
+    if(window.innerWidth<=680)[rt,rmb,rmg,rrs].forEach(autoFitBig);
 
     // tabella mensile principale: Totale / Matched Betting / Maggiorate / Rimborso Slot
     const monthsSet=[...new Set(moves.map(m=>(m.date||'').slice(0,7)).filter(Boolean))].sort();
@@ -5419,6 +5581,8 @@
   }
   saldoFromUrlParams();
 
+
+  if(window.innerWidth<=680){const t=document.querySelector('[data-tab="summary"]');if(t)t.click();}
 </script>
 
 </body></html>
