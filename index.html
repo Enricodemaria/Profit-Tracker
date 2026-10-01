@@ -1412,8 +1412,25 @@
       </div>
       <p class="note" id="cred-status">Scegli prima una cartella nella sezione sopra.</p>
     </div>
+    <div class="card" style="margin-bottom:20px" id="fb-card">
+      <h2><span class="dot"></span>Sincronizzazione con Firebase</h2>
+      <p class="sub">Accedi con lo stesso utente del tracker del chiosco: telefono e PC restano allineati riga per riga, anche se modifichi da entrambi. I dati restano anche su questo dispositivo, quindi funziona senza rete. Credenziali dei book, PIN e dati della carta non escono mai dal dispositivo. Quando sei collegato, Google Sheets su questo dispositivo si spegne.</p>
+      <div id="fb-out">
+        <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end">
+          <div class="field" style="flex:1 1 220px;max-width:280px;margin-bottom:0"><label>Email</label><input type="email" id="fb-mail" data-testid="fb-mail" inputmode="email" autocomplete="username"></div>
+          <div class="field" style="flex:1 1 180px;max-width:220px;margin-bottom:0"><label>Password</label><input type="password" id="fb-pw" data-testid="fb-pw" autocomplete="current-password"></div>
+          <button class="btn" id="fb-login" data-testid="fb-login">Accedi</button>
+        </div>
+      </div>
+      <div id="fb-in" class="hidden">
+        <p style="margin:0 0 12px">Collegato come <b id="fb-email" data-testid="fb-email"></b></p>
+        <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn" id="fb-sync-now" data-testid="fb-sync-now">Sincronizza ora</button><button class="btn ghost" id="fb-logout" data-testid="fb-logout">Esci</button></div>
+      </div>
+      <p class="note" id="fb-status" data-testid="fb-status" style="margin-top:12px"></p>
+    </div>
     <div class="card" style="margin-bottom:20px">
-      <h2><span class="dot"></span>Google Sheets — sincronizza i dati</h2>
+      <h2><span class="dot"></span>Google Sheets — alternativa (es. per chi non usa Firebase)</h2>
+      <p class="note hidden" id="gs-fb-note" style="color:var(--amber);margin:0 0 10px">Sei collegato a Firebase: su questo dispositivo Google Sheets è spento.</p>
       <p class="sub">Tieni il file qui sul PC come sempre, ma con i dati salvati su un tuo Google Sheet: apribile e sincronizzato da qualunque dispositivo, telefono incluso. Ogni persona che usa questo file configura il PROPRIO account — nessun dato passa da qui, solo dal tuo browser a Google.</p>
       <div class="field">
         <label>Chiave account di servizio (il file .json scaricato da Google Cloud — incollane tutto il contenuto)</label>
@@ -3879,7 +3896,192 @@
     let cmIn=null;try{cmIn=metaRows[7]?JSON.parse(metaRows[7][0]):null;}catch(e){cmIn=null;}
     return {books:byIdx.books,tipos:byIdx.tipos,games:byIdx.games,ids:byIdx.ids,moves:byIdx.moves,drafts:byIdx.drafts,recurring:byIdx.recurring,cashmoves:byIdx.cashmoves,promos:byIdx.promos,savedMultiples:byIdx.savedMultiples,cashStart:cs,cashActual:ca,tgCfg:tg,promoCfg:pc,cashActualTs:cats,rsStake,rsTp,rsFunRules:rsFunRulesIn,cashManual:cmIn};
   }
+  // =====================================================================================
+  // ===== FIREBASE FIRESTORE: stesso progetto e stesso accesso del tracker del chiosco =====
+  // Raccolte separate (pt_…). Ogni riga è un documento: si sincronizza solo quello che cambia e, se la
+  // stessa riga è stata modificata su due dispositivi, vince la modifica più recente. Gli stessi dati di
+  // Google Sheets, con le stesse esclusioni: credenziali, PIN e carta non escono mai dal dispositivo.
+  const FB={apiKey:'AIzaSyBmTHxviLJwKQIdmYpFIDPHxnnwakqoWXk',projectId:'dema--tracker'};
+  const FB_ROOT='projects/'+FB.projectId+'/databases/(default)/documents';
+  const FB_URL='https://firestore.googleapis.com/v1/'+FB_ROOT;
+  const FB_ARR=[['pt_moves','moves'],['pt_cash','cashmoves'],['pt_drafts','drafts'],['pt_recurring','recurring'],['pt_promos','promos'],['pt_multiple','savedMultiples'],['pt_ids','ids']];
+  const FB_ALL=[...FB_ARR.map(x=>x[0]),'pt_config'];
+  let fbAuth=null,fbTok={id:'',exp:0},fbState={pull:-1,k:{}},fbTimer=null,fbBusy=false,fbAgain=false;
+  try{fbAuth=JSON.parse(localStorage.getItem('pt_fb_auth'));}catch(e){}
+  try{const st=JSON.parse(localStorage.getItem('pt_fb_state'));if(st&&st.k)fbState=st;}catch(e){}
+  const fbActive=()=>!!(fbAuth&&fbAuth.refreshToken);
+  const fbSaveState=()=>{try{localStorage.setItem('pt_fb_state',JSON.stringify(fbState));}catch(e){}};
+  const fbHash=str=>{let h=0x811c9dc5;for(let i=0;i<str.length;i++){h^=str.charCodeAt(i);h=Math.imul(h,0x01000193)>>>0;}return h.toString(16);};
+  function fbErr(e){
+    const m=(e&&e.message)||String(e);
+    if(/EMAIL_NOT_FOUND|INVALID_PASSWORD|INVALID_LOGIN_CREDENTIALS|INVALID_EMAIL/.test(m))return 'Email o password non corrette';
+    if(/SESSIONE_SCADUTA/.test(m))return 'Sessione scaduta: accedi di nuovo';
+    if((e&&e.status===403)||/PERMISSION_DENIED|insufficient permissions/i.test(m))return 'Permesso negato: controlla le regole di Firestore';
+    if(/Failed to fetch|NetworkError|Load failed/i.test(m))return 'Nessuna connessione: i dati restano sul dispositivo e si allineano appena torna la rete';
+    return m;
+  }
+  async function fbPost(url,body,tok){
+    const h={'Content-Type':'application/json'};if(tok)h.Authorization='Bearer '+tok;
+    const r=await fetch(url,{method:'POST',headers:h,body:JSON.stringify(body)});
+    let j=null;try{j=await r.json();}catch(e){}
+    if(!r.ok){const m=(j&&j.error&&(j.error.message||j.error.status))||('HTTP '+r.status);const err=new Error(typeof m==='string'?m:JSON.stringify(m));err.status=r.status;throw err;}
+    return j;
+  }
+  async function fbSignIn(email,pw){
+    const j=await fbPost('https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key='+FB.apiKey,{email,password:pw,returnSecureToken:true});
+    fbTok={id:j.idToken,exp:Date.now()+(+j.expiresIn||3600)*1000};
+    fbAuth={email,refreshToken:j.refreshToken};localStorage.setItem('pt_fb_auth',JSON.stringify(fbAuth));
+  }
+  async function fbToken(){
+    if(!fbActive())throw new Error('non collegato');
+    if(fbTok.id&&Date.now()<fbTok.exp-60000)return fbTok.id;
+    const r=await fetch('https://securetoken.googleapis.com/v1/token?key='+FB.apiKey,{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'grant_type=refresh_token&refresh_token='+encodeURIComponent(fbAuth.refreshToken)});
+    const j=await r.json().catch(()=>null);
+    if(!r.ok||!j||!j.id_token)throw new Error('SESSIONE_SCADUTA');
+    fbTok={id:j.id_token,exp:Date.now()+(+j.expires_in||3600)*1000};
+    if(j.refresh_token&&j.refresh_token!==fbAuth.refreshToken){fbAuth.refreshToken=j.refresh_token;localStorage.setItem('pt_fb_auth',JSON.stringify(fbAuth));}
+    return fbTok.id;
+  }
+  const fbFields=(rec,u,del,sv)=>({u:{integerValue:String(u||0)},s:{integerValue:String(sv||0)},deleted:{booleanValue:!!del},d:{stringValue:del?'':JSON.stringify(rec)}});
+  async function fbQuery(coll,since,tok){
+    const j=await fbPost(FB_URL+':runQuery',{structuredQuery:{from:[{collectionId:coll}],where:{fieldFilter:{field:{fieldPath:'s'},op:'GREATER_THAN',value:{integerValue:String(since)}}},orderBy:[{field:{fieldPath:'s'},direction:'ASCENDING'}]}},tok);
+    return (j||[]).filter(x=>x.document).map(x=>{const fl=x.document.fields||{};
+      return {id:x.document.name.split('/').pop(),u:+((fl.u||{}).integerValue||0),s:+((fl.s||{}).integerValue||0),del:!!(fl.deleted||{}).booleanValue,rec:(fl.d&&fl.d.stringValue)?JSON.parse(fl.d.stringValue):null};});
+  }
+  // istantanea dei dati da sincronizzare (come su Sheets)
+  function fbSnapshot(){
+    let sm=[],tg={},pc={};
+    try{sm=JSON.parse(localStorage.getItem('mb_saved_multiples'))||[];}catch(e){}
+    try{tg=JSON.parse(localStorage.getItem('mb_tg')||'{}');}catch(e){}
+    try{pc=JSON.parse(localStorage.getItem('tk_promo_cfg')||'{}');}catch(e){}
+    const idsS=ids.map(x=>{const {pp_pass,pin,cc_num,cc_sca,cc_cvv,...rest}=x;return {...rest,books:(x.books||[]).map(b=>({book:b.book,limit:b.limit}))};});
+    return {arrays:{moves,cashmoves,drafts,recurring,promos:(typeof promos!=='undefined'&&Array.isArray(promos))?promos:[],savedMultiples:sm,ids:idsS},
+      config:{books,tipos,games,cashStart,cashActual,cashActualTs,cashManual:{v:cashManual,ts:cashManualTs},rsStake:rsStakeGlobal,rsTp:rsTpGlobal,rsFunRules,tgCfg:tg,promoCfg:pc}};
+  }
+  const fbId=r=>{let id=r.uid||r.id||r.key||r.label;id=id!==undefined&&id!==null&&id!==''?String(id):'h_'+fbHash(JSON.stringify(r));return id.replace(/[^A-Za-z0-9_.\-]/g,'_').slice(0,140);};
+  function fbMaps(snap){const m={};FB_ARR.forEach(([c,key])=>{const mm={};(snap.arrays[key]||[]).forEach(r=>{if(r&&typeof r==='object')mm[fbId(r)]=r;});m[c]=mm;});m.pt_config=snap.config;return m;}
+  // segna come da inviare tutto ciò che è nuovo, cambiato o sparito rispetto all'ultima sincronizzazione
+  function fbTrack(){
+    const now=Date.now(),maps=fbMaps(fbSnapshot());let dirty=false;
+    FB_ALL.forEach(c=>{
+      const K=fbState.k[c]||(fbState.k[c]={}),map=maps[c];
+      Object.keys(map).forEach(id=>{const h=fbHash(JSON.stringify(map[id]===undefined?null:map[id]));const p=K[id];
+        if(!p||p.del||p.h!==h){K[id]={h,u:Math.max(now,((p&&p.u)||0)+1),d:1};dirty=true;}});
+      if(c!=='pt_config')Object.keys(K).forEach(id=>{if(!(id in map)&&!K[id].del){K[id]={h:'',u:Math.max(now,(K[id].u||0)+1),del:1,d:1};dirty=true;}});
+    });
+    if(dirty)fbSaveState();
+    return maps;
+  }
+  async function fbPushDirty(tok){
+    const maps=fbTrack(),t0=Date.now(),writes=[];
+    FB_ALL.forEach(c=>Object.entries(fbState.k[c]||{}).forEach(([id,e])=>{
+      if(!e.d)return;
+      const rec=e.del?null:(c==='pt_config'?{v:maps.pt_config[id]}:maps[c][id]);
+      if(!e.del&&rec===undefined)return;
+      writes.push({update:{name:FB_ROOT+'/'+c+'/'+id,fields:fbFields(rec,e.u,e.del,t0)}});
+    }));
+    for(let i=0;i<writes.length;i+=400)await fbPost(FB_URL+':commit',{writes:writes.slice(i,i+400)},tok);
+    FB_ALL.forEach(c=>Object.values(fbState.k[c]||{}).forEach(e=>{delete e.d;}));
+    if(writes.length&&t0>fbState.pull)fbState.pull=t0;
+    fbSaveState();return writes.length;
+  }
+  function fbExt(maps){
+    const a=c=>Object.values(maps[c]||{}),cfg=maps.pt_config||{};
+    return {books:cfg.books,tipos:cfg.tipos,games:cfg.games,ids:a('pt_ids'),moves:a('pt_moves'),drafts:a('pt_drafts'),recurring:a('pt_recurring'),
+      cashmoves:a('pt_cash'),promos:a('pt_promos'),savedMultiples:a('pt_multiple'),cashStart:cfg.cashStart,cashActual:cfg.cashActual,cashActualTs:cfg.cashActualTs,
+      cashManual:cfg.cashManual,rsStake:cfg.rsStake,rsTp:cfg.rsTp,rsFunRules:cfg.rsFunRules,tgCfg:cfg.tgCfg,promoCfg:cfg.promoCfg};
+  }
+  const fbByDateDesc=arr=>arr.sort((x,y)=>(y.date||'').localeCompare(x.date||''));
+  // prima volta su questo dispositivo
+  async function fbFirstSync(tok){
+    const remote={};let total=0,maxS=-1;
+    for(const c of FB_ALL){const docs=await fbQuery(c,-1,tok);remote[c]=docs;docs.forEach(d=>{if(d.s>maxS)maxS=d.s;});total+=docs.filter(d=>!d.del).length;}
+    fbState={pull:-1,k:{}};
+    if(!total){
+      if(!confirm(`Il database è ancora vuoto. Carico i dati di questo dispositivo (${moves.length} movimenti)?`)){fbAuth=null;fbTok={id:'',exp:0};localStorage.removeItem('pt_fb_auth');fbRenderCard();fbStatusMsg('Caricamento annullato: niente è stato inviato e non sei collegato.',false);return false;}
+      fbStatusMsg('Carico i dati sul database…');
+      const n=await fbPushDirty(tok);fbStatusMsg(`Fatto: ${n} righe caricate.`,true);return true;
+    }
+    const nm=remote.pt_moves.filter(d=>!d.del).length;
+    const replace=confirm(`Sul database ci sono già ${nm} movimenti.\n\nOK = usa i dati del database su questo dispositivo (consigliato)\nAnnulla = unisci con i dati di questo dispositivo`);
+    const maps=replace?{}:fbMaps(fbSnapshot());
+    FB_ALL.forEach(c=>{
+      const K=fbState.k[c]={};if(replace)maps[c]=c==='pt_config'?{...fbSnapshot().config}:{};
+      remote[c].forEach(d=>{
+        if(d.del){K[d.id]={h:'',u:d.u,del:1};if(c!=='pt_config')delete maps[c][d.id];return;}
+        const v=c==='pt_config'?(d.rec?d.rec.v:undefined):d.rec;
+        maps[c][d.id]=v;K[d.id]={h:fbHash(JSON.stringify(v===undefined?null:v)),u:d.u};
+      });
+    });
+    const ext=fbExt(maps);fbByDateDesc(ext.moves);fbByDateDesc(ext.cashmoves);
+    applyRemoteData(ext);
+    fbState.pull=maxS;fbSaveState();
+    await fbPushDirty(tok); // righe solo locali (se hai scelto di unire) e piccole normalizzazioni
+    return true;
+  }
+  function fbScheduleSync(){if(!fbActive())return;clearTimeout(fbTimer);fbTimer=setTimeout(fbSync,2500);}
+  async function fbSync(){
+    if(!fbActive())return;
+    if(fbBusy){fbAgain=true;return;}
+    fbBusy=true;clearTimeout(fbTimer);fbStatusMsg('Sincronizzo…');
+    try{
+      const tok=await fbToken();
+      if(fbState.pull<0){if(!(await fbFirstSync(tok))){fbBusy=false;return;}}
+      else{
+        const since=Math.max(-1,fbState.pull-600000);
+        const maps=fbTrack();let maxS=fbState.pull,changed=false;const fresh={};
+        for(const c of FB_ALL){
+          const docs=await fbQuery(c,since,tok),K=fbState.k[c]||(fbState.k[c]={});fresh[c]={};
+          docs.forEach(d=>{
+            if(d.s>maxS)maxS=d.s;
+            const p=K[d.id];if(d.u<=(p?p.u:-1))return;
+            if(d.del){K[d.id]={h:'',u:d.u,del:1};if(c!=='pt_config')delete maps[c][d.id];changed=true;return;}
+            const v=c==='pt_config'?(d.rec?d.rec.v:undefined):d.rec;if(v===undefined)return;
+            K[d.id]={h:fbHash(JSON.stringify(v)),u:d.u};
+            if(c!=='pt_config'&&!(d.id in maps[c]))fresh[c][d.id]=v;else maps[c][d.id]=v;
+            changed=true;
+          });
+          if(c!=='pt_config')maps[c]={...fresh[c],...maps[c]}; // le righe nuove arrivano in cima, come quando le inserisci
+        }
+        fbState.pull=maxS;fbSaveState();
+        if(changed)applyRemoteData(fbExt(maps));
+        await fbPushDirty(tok);
+      }
+      localStorage.setItem('pt_fb_last',new Date().toISOString());
+      fbStatusMsg('Sincronizzato — '+new Date().toLocaleString('it-IT'),true);
+    }catch(e){
+      if(e&&e.status===401)fbTok={id:'',exp:0};
+      if(/SESSIONE_SCADUTA/.test((e&&e.message)||'')){fbAuth=null;localStorage.removeItem('pt_fb_auth');fbRenderCard();}
+      fbStatusMsg(fbErr(e),false);
+    }
+    fbBusy=false;
+    if(fbAgain){fbAgain=false;fbScheduleSync();}
+  }
+  function fbStatusMsg(msg,ok){const el=$('fb-status');if(!el)return;el.textContent=msg;el.style.color=ok===true?'var(--green)':ok===false?'var(--red)':'var(--muted)';}
+  function fbRenderCard(){
+    const on=fbActive();$('fb-out').classList.toggle('hidden',on);$('fb-in').classList.toggle('hidden',!on);
+    if(on)$('fb-email').textContent=fbAuth.email||'';
+    const gsNote=$('gs-fb-note');if(gsNote)gsNote.classList.toggle('hidden',!on);
+  }
+  $('fb-login').addEventListener('click',async()=>{
+    const em=val('fb-mail').trim(),pw=$('fb-pw').value;
+    if(!em||!pw){fbStatusMsg('Inserisci email e password.',false);return;}
+    fbStatusMsg('Accesso in corso…');
+    try{await fbSignIn(em,pw);$('fb-pw').value='';fbState={pull:-1,k:{}};fbSaveState();fbRenderCard();await fbSync();}
+    catch(e){fbStatusMsg(fbErr(e),false);}
+  });
+  $('fb-pw').addEventListener('keydown',e=>{if(e.key==='Enter')$('fb-login').click();});
+  $('fb-sync-now').addEventListener('click',()=>fbSync());
+  $('fb-logout').addEventListener('click',()=>{
+    if(!confirm('Uscire da Firebase su questo dispositivo? I dati restano qui, ma smettono di sincronizzarsi.'))return;
+    fbAuth=null;fbTok={id:'',exp:0};fbState={pull:-1,k:{}};localStorage.removeItem('pt_fb_auth');fbSaveState();fbRenderCard();fbStatusMsg('Non collegato.');
+  });
+  setInterval(()=>{if(fbActive()&&!document.hidden)fbSync();},60000);
+  document.addEventListener('visibilitychange',()=>{if(!document.hidden&&fbActive())fbSync();});
+  fbRenderCard();
+  // ===== fine Firebase =====
   function gsScheduleSync(){
+    if(fbActive()){fbScheduleSync();return;} // collegato a Firebase: Google Sheets su questo dispositivo è spento
     if(!gsCfg||!gsCfg.enabled)return;
     clearTimeout(gsTimer);gsPending=true;
     gsTimer=setTimeout(()=>{saveToSheets().then(()=>{gsPending=false;gsStatus('Sincronizzato con Google Sheets.',true);}).catch(e=>gsStatus('Errore: '+e.message,false));},2500);
@@ -4357,25 +4559,23 @@
   loadChartOrder();initChartDrag();
   gsInit();
   load();runRecurring();refreshSelects();renderMoves();renderSetup();renderRecurring();renderAnag();renderCash();renderCashSummary();renderDraftsBadge();applyTheme(localStorage.getItem('tk_theme')||(window.matchMedia&&window.matchMedia('(prefers-color-scheme: light)').matches?'light':'dark'));autobkInit();
-  if(gsCfg&&gsCfg.enabled){
+  // dati in arrivo (Google Sheets o Firebase): li applica e aggiorna tutte le schermate
+  function applyRemoteData(data){
+    load(data);
+    runRecurring();refreshSelects();renderMoves();renderSetup();renderRecurring();renderAnag();renderCash();renderCashSummary();renderDraftsBadge();
+    if(typeof loadPromo==='function'){loadPromo();if(typeof renderPromo==='function')renderPromo();}
+    if(Array.isArray(data.savedMultiples)){localStorage.setItem('mb_saved_multiples',JSON.stringify(data.savedMultiples));if(typeof loadSaved==='function'){loadSaved();if(typeof renderSaved==='function')renderSaved();}}
+    if(data.tgCfg){localStorage.setItem('mb_tg',JSON.stringify(data.tgCfg));if(typeof tgLoad==='function')tgLoad();}
+    if(data.promoCfg){localStorage.setItem('tk_promo_cfg',JSON.stringify(data.promoCfg));if(typeof promoCfgApplyToUI==='function')promoCfgApplyToUI();}
+    if(!$('summary').classList.contains('hidden'))renderSummary();
+  }
+  if(fbActive()){
+    fbSync();
+  } else if(gsCfg&&gsCfg.enabled){
     gsStatus('Carico i dati da Google Sheets…');
     loadFromSheets().then(data=>{
       if(!data)return;
-      load(data);
-      runRecurring();refreshSelects();renderMoves();renderSetup();renderRecurring();renderAnag();renderCash();renderCashSummary();renderDraftsBadge();
-      if(typeof loadPromo==='function'){loadPromo();if(typeof renderPromo==='function')renderPromo();}
-      if(Array.isArray(data.savedMultiples)){
-        localStorage.setItem('mb_saved_multiples',JSON.stringify(data.savedMultiples));
-        if(typeof loadSaved==='function'){loadSaved();if(typeof renderSaved==='function')renderSaved();}
-      }
-      if(data.tgCfg){
-        localStorage.setItem('mb_tg',JSON.stringify(data.tgCfg));
-        if(typeof tgLoad==='function')tgLoad();
-      }
-      if(data.promoCfg){
-        localStorage.setItem('tk_promo_cfg',JSON.stringify(data.promoCfg));
-        if(typeof promoCfgApplyToUI==='function')promoCfgApplyToUI();
-      }
+      applyRemoteData(data);
       gsStatus('Dati aggiornati da Google Sheets — ultima sincronizzazione: '+new Date().toLocaleString('it-IT'),true);
       checkPendingPromo();
       if(!gsPromoTimer)gsPromoTimer=setInterval(checkPendingPromo,20000);
@@ -5100,6 +5300,7 @@
   // da un altro dispositivo, una scheda aperta da ore avrebbe importi vecchi. Non lo faccio se questo
   // dispositivo ha modifiche non ancora inviate, per non sovrascriverle.
   async function tgRefreshMultiples(){
+    if(typeof fbActive==='function'&&fbActive()){try{await fbSync();}catch(e){}return;}
     if(!(gsCfg&&gsCfg.enabled)||gsPending||typeof loadFromSheets!=='function')return;
     try{
       const data=await loadFromSheets();
