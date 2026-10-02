@@ -3898,38 +3898,48 @@
   }
   // =====================================================================================
   // ===== FIREBASE FIRESTORE: stesso progetto e stesso accesso del tracker del chiosco =====
-  // Raccolte separate (pt_…). Ogni riga è un documento: si sincronizza solo quello che cambia e, se la
-  // stessa riga è stata modificata su due dispositivi, vince la modifica più recente. Gli stessi dati di
-  // Google Sheets, con le stesse esclusioni: credenziali, PIN e carta non escono mai dal dispositivo.
+  // Un'unica raccolta (pt_data): ogni riga è un documento "tipo~id". L'ora di ogni scrittura la mette il
+  // server (st), quindi ogni sincronizzazione legge SOLO le righe cambiate dopo l'ultima vista: una sola
+  // lettura quando non è cambiato niente. Se la stessa riga è stata modificata su due dispositivi vince la
+  // modifica più recente. Stessi dati di Google Sheets, con le stesse esclusioni: credenziali, PIN e carta
+  // non escono mai dal dispositivo.
   const FB={apiKey:'AIzaSyBmTHxviLJwKQIdmYpFIDPHxnnwakqoWXk',projectId:'dema--tracker'};
   const FB_ROOT='projects/'+FB.projectId+'/databases/(default)/documents';
   const FB_URL='https://firestore.googleapis.com/v1/'+FB_ROOT;
+  const FB_COLL='pt_data';
   const FB_ARR=[['pt_moves','moves'],['pt_cash','cashmoves'],['pt_drafts','drafts'],['pt_recurring','recurring'],['pt_promos','promos'],['pt_multiple','savedMultiples'],['pt_ids','ids']];
   const FB_ALL=[...FB_ARR.map(x=>x[0]),'pt_config'];
-  let fbAuth=null,fbTok={id:'',exp:0},fbState={pull:-1,k:{}},fbTimer=null,fbBusy=false,fbAgain=false;
+  let fbAuth=null,fbTok={id:'',exp:0},fbState={v:2,ptr:null,init:false,k:{}},fbTimer=null,fbBusy=false,fbAgain=false,fbPausedUntil=0;
   try{fbAuth=JSON.parse(localStorage.getItem('pt_fb_auth'));}catch(e){}
-  try{const st=JSON.parse(localStorage.getItem('pt_fb_state'));if(st&&st.k)fbState=st;}catch(e){}
+  try{const st=JSON.parse(localStorage.getItem('pt_fb_state'));
+    if(st&&st.v===2&&st.k)fbState=st;
+    else if(st&&st.k)fbState={v:2,ptr:null,init:false,k:{},old:Object.keys(st.k).length>0}; // era già sincronizzato con la versione precedente
+  }catch(e){}
   const fbActive=()=>!!(fbAuth&&fbAuth.refreshToken);
   const fbSaveState=()=>{try{localStorage.setItem('pt_fb_state',JSON.stringify(fbState));}catch(e){}};
   const fbHash=str=>{let h=0x811c9dc5;for(let i=0;i<str.length;i++){h^=str.charCodeAt(i);h=Math.imul(h,0x01000193)>>>0;}return h.toString(16);};
+  const fbSleep=ms=>new Promise(r=>setTimeout(r,ms));
   function fbErr(e){
     const m=(e&&e.message)||String(e);
     if(/EMAIL_NOT_FOUND|INVALID_PASSWORD|INVALID_LOGIN_CREDENTIALS|INVALID_EMAIL/.test(m))return 'Email o password non corrette';
     if(/SESSIONE_SCADUTA/.test(m))return 'Sessione scaduta: accedi di nuovo';
+    if(e&&e.quota)return 'Firebase ha raggiunto il limite giornaliero gratuito: si azzera ogni giorno alle 9:00. I dati restano su questo dispositivo e si sincronizzano da soli appena possibile.';
     if((e&&e.status===403)||/PERMISSION_DENIED|insufficient permissions/i.test(m))return 'Permesso negato: controlla le regole di Firestore';
     if(/Failed to fetch|NetworkError|Load failed/i.test(m))return 'Nessuna connessione: i dati restano sul dispositivo e si allineano appena torna la rete';
-    if((e&&e.status===429)||/RESOURCE_EXHAUSTED|quota/i.test(m))return 'Firebase ha limitato le scritture (troppe richieste o limite giornaliero del piano gratuito). Le righe non ancora inviate restano in coda: riprovo da solo più tardi.';
+    if((e&&e.status===429)||/RESOURCE_EXHAUSTED/i.test(m))return 'Firebase chiede di rallentare: riprovo da solo tra poco. Le righe non ancora inviate restano in coda.';
     return m;
   }
-  const fbSleep=ms=>new Promise(r=>setTimeout(r,ms));
   async function fbPost(url,body,tok){
     const h={'Content-Type':'application/json'};if(tok)h.Authorization='Bearer '+tok;
     let r,j=null;
-    // se Firebase frena (troppe richieste) riprovo con pause crescenti: 2, 4, 8, 16, 32 secondi
     for(let attempt=0;;attempt++){
       r=await fetch(url,{method:'POST',headers:h,body:JSON.stringify(body)});
       j=null;try{j=await r.json();}catch(e){}
-      if((r.status===429||r.status===503)&&attempt<5){fbStatusMsg(`Firebase chiede di rallentare: riprovo tra ${2**(attempt+1)} secondi…`);await fbSleep(2000*2**attempt);continue;}
+      const msg=JSON.stringify((j&&j.error)||'');
+      // limite giornaliero: inutile insistere
+      if(r.status===429&&/quota/i.test(msg)){const err=new Error('quota');err.status=429;err.quota=true;throw err;}
+      // troppe richieste ravvicinate: riprovo con pause crescenti
+      if((r.status===429||r.status===503)&&attempt<4){fbStatusMsg(`Firebase chiede di rallentare: riprovo tra ${2**(attempt+1)} secondi…`);await fbSleep(2000*2**attempt);continue;}
       break;
     }
     if(!r.ok){const m=(j&&j.error&&(j.error.message||j.error.status))||('HTTP '+r.status);const err=new Error(typeof m==='string'?m:JSON.stringify(m));err.status=r.status;throw err;}
@@ -3950,11 +3960,13 @@
     if(j.refresh_token&&j.refresh_token!==fbAuth.refreshToken){fbAuth.refreshToken=j.refresh_token;localStorage.setItem('pt_fb_auth',JSON.stringify(fbAuth));}
     return fbTok.id;
   }
-  const fbFields=(rec,u,del,sv)=>({u:{integerValue:String(u||0)},s:{integerValue:String(sv||0)},deleted:{booleanValue:!!del},d:{stringValue:del?'':JSON.stringify(rec)}});
-  async function fbQuery(coll,since,tok){
-    const j=await fbPost(FB_URL+':runQuery',{structuredQuery:{from:[{collectionId:coll}],where:{fieldFilter:{field:{fieldPath:'s'},op:'GREATER_THAN',value:{integerValue:String(since)}}},orderBy:[{field:{fieldPath:'s'},direction:'ASCENDING'}]}},tok);
-    return (j||[]).filter(x=>x.document).map(x=>{const fl=x.document.fields||{};
-      return {id:x.document.name.split('/').pop(),u:+((fl.u||{}).integerValue||0),s:+((fl.s||{}).integerValue||0),del:!!(fl.deleted||{}).booleanValue,rec:(fl.d&&fl.d.stringValue)?JSON.parse(fl.d.stringValue):null};});
+  // righe cambiate dopo "ptr" (ora del server dell'ultima riga vista); ptr vuoto = tutto
+  async function fbQueryAll(tok,ptr){
+    const q={from:[{collectionId:FB_COLL}],orderBy:[{field:{fieldPath:'st'},direction:'ASCENDING'}]};
+    if(ptr)q.where={fieldFilter:{field:{fieldPath:'st'},op:'GREATER_THAN',value:{timestampValue:ptr}}};
+    const j=await fbPost(FB_URL+':runQuery',{structuredQuery:q},tok);
+    return (j||[]).filter(x=>x.document).map(x=>{const fl=x.document.fields||{};const full=x.document.name.split('/').pop();const i=full.indexOf('~');
+      return {c:'pt_'+full.slice(0,i),id:full.slice(i+1),u:+((fl.u||{}).integerValue||0),st:(fl.st||{}).timestampValue||null,del:!!(fl.deleted||{}).booleanValue,rec:(fl.d&&fl.d.stringValue)?JSON.parse(fl.d.stringValue):null};});
   }
   // istantanea dei dati da sincronizzare (come su Sheets)
   function fbSnapshot(){
@@ -3980,20 +3992,23 @@
     if(dirty)fbSaveState();
     return maps;
   }
+  // invio a pacchetti da 100, con l'ora del server su ogni riga; ogni pacchetto riuscito viene "spuntato",
+  // così se qualcosa si interrompe si riprende da lì
   async function fbPushDirty(tok){
-    const maps=fbTrack(),t0=Date.now(),writes=[];
+    const maps=fbTrack(),writes=[];
     FB_ALL.forEach(c=>Object.entries(fbState.k[c]||{}).forEach(([id,e])=>{
       if(!e.d)return;
       const rec=e.del?null:(c==='pt_config'?{v:maps.pt_config[id]}:maps[c][id]);
       if(!e.del&&rec===undefined)return;
-      writes.push({c,id,w:{update:{name:FB_ROOT+'/'+c+'/'+id,fields:fbFields(rec,e.u,e.del,t0)}}});
+      writes.push({c,id,w:{update:{name:FB_ROOT+'/'+FB_COLL+'/'+c.slice(3)+'~'+id,
+        fields:{u:{integerValue:String(e.u||0)},deleted:{booleanValue:!!e.del},d:{stringValue:e.del?'':JSON.stringify(rec)}}},
+        updateTransforms:[{fieldPath:'st',setToServerValue:'REQUEST_TIME'}]}});
     }));
     const N=100;
     for(let i=0;i<writes.length;i+=N){
       const part=writes.slice(i,i+N);
       await fbPost(FB_URL+':commit',{writes:part.map(x=>x.w)},tok);
       part.forEach(x=>{const e=(fbState.k[x.c]||{})[x.id];if(e)delete e.d;});
-      if(t0>fbState.pull)fbState.pull=t0;
       fbSaveState();
       if(writes.length>N){fbStatusMsg(`Caricamento: ${Math.min(i+N,writes.length)} di ${writes.length} righe…`);if(i+N<writes.length)await fbSleep(500);}
     }
@@ -4006,23 +4021,27 @@
       cashManual:cfg.cashManual,rsStake:cfg.rsStake,rsTp:cfg.rsTp,rsFunRules:cfg.rsFunRules,tgCfg:cfg.tgCfg,promoCfg:cfg.promoCfg};
   }
   const fbByDateDesc=arr=>arr.sort((x,y)=>(y.date||'').localeCompare(x.date||''));
-  // prima volta su questo dispositivo
+  // prima volta su questo dispositivo (o primo passaggio alla raccolta unica)
   async function fbFirstSync(tok){
-    const remote={};let total=0,maxS=-1;
-    for(const c of FB_ALL){const docs=await fbQuery(c,-1,tok);remote[c]=docs;docs.forEach(d=>{if(d.s>maxS)maxS=d.s;});total+=docs.filter(d=>!d.del).length;}
-    fbState={pull:-1,k:{}};
+    const docs=await fbQueryAll(tok,null);
+    const remote={};FB_ALL.forEach(c=>remote[c]=[]);
+    docs.forEach(d=>{if(remote[d.c])remote[d.c].push(d);});
+    const ptr=docs.length?docs[docs.length-1].st:null;
+    const total=docs.filter(d=>!d.del).length,wasSynced=!!fbState.old;
     if(!total){
-      if(!confirm(`Il database è ancora vuoto. Carico i dati di questo dispositivo (${moves.length} movimenti)?`)){fbAuth=null;fbTok={id:'',exp:0};localStorage.removeItem('pt_fb_auth');fbRenderCard();fbStatusMsg('Caricamento annullato: niente è stato inviato e non sei collegato.',false);return false;}
+      if(!wasSynced&&!confirm(`Il database è ancora vuoto. Carico i dati di questo dispositivo (${moves.length} movimenti)?`)){
+        fbAuth=null;fbTok={id:'',exp:0};localStorage.removeItem('pt_fb_auth');fbRenderCard();fbStatusMsg('Caricamento annullato: niente è stato inviato e non sei collegato.',false);return false;}
       fbStatusMsg('Carico i dati sul database…');
-      fbState.pull=0;fbSaveState();
+      fbState={v:2,ptr:null,init:true,k:{}};fbSaveState();
       const n=await fbPushDirty(tok);fbStatusMsg(`Fatto: ${n} righe caricate.`,true);return true;
     }
     const nm=remote.pt_moves.filter(d=>!d.del).length;
     const local=fbMaps(fbSnapshot());
     const partial=FB_ARR.every(([c])=>remote[c].filter(d=>!d.del).every(d=>d.id in local[c]));
-    if(partial)fbStatusMsg('Il database contiene solo righe già presenti qui: completo il caricamento…');
-    const replace=partial?false:confirm(`Sul database ci sono già ${nm} movimenti.\n\nOK = usa i dati del database su questo dispositivo (consigliato)\nAnnulla = unisci con i dati di questo dispositivo`);
-    const maps=replace?{}:fbMaps(fbSnapshot());
+    // dispositivo già sincronizzato prima, o database con solo righe che ha già: unisco senza chiedere
+    const replace=(partial||wasSynced)?false:confirm(`Sul database ci sono già ${nm} movimenti.\n\nOK = usa i dati del database su questo dispositivo (consigliato)\nAnnulla = unisci con i dati di questo dispositivo`);
+    const maps=replace?{}:local;
+    fbState={v:2,ptr:null,init:false,k:{}};
     FB_ALL.forEach(c=>{
       const K=fbState.k[c]={};if(replace)maps[c]=c==='pt_config'?{...fbSnapshot().config}:{};
       remote[c].forEach(d=>{
@@ -4033,42 +4052,44 @@
     });
     const ext=fbExt(maps);fbByDateDesc(ext.moves);fbByDateDesc(ext.cashmoves);
     applyRemoteData(ext);
-    fbState.pull=maxS;fbSaveState();
-    await fbPushDirty(tok); // righe solo locali (se hai scelto di unire) e piccole normalizzazioni
+    fbState.ptr=ptr;fbState.init=true;fbSaveState();
+    await fbPushDirty(tok); // righe solo locali e piccole normalizzazioni
     return true;
   }
   function fbScheduleSync(){if(!fbActive())return;clearTimeout(fbTimer);fbTimer=setTimeout(fbSync,2500);}
-  async function fbSync(){
+  async function fbSync(force){
     if(!fbActive())return;
+    if(!force&&Date.now()<fbPausedUntil)return;
     if(fbBusy){fbAgain=true;return;}
     fbBusy=true;clearTimeout(fbTimer);fbStatusMsg('Sincronizzo…');
     try{
       const tok=await fbToken();
-      if(fbState.pull<0){if(!(await fbFirstSync(tok))){fbBusy=false;return;}}
+      if(!fbState.init){if(!(await fbFirstSync(tok))){fbBusy=false;return;}}
       else{
-        const since=Math.max(-1,fbState.pull-600000);
-        const maps=fbTrack();let maxS=fbState.pull,changed=false;const fresh={};
-        for(const c of FB_ALL){
-          const docs=await fbQuery(c,since,tok),K=fbState.k[c]||(fbState.k[c]={});fresh[c]={};
-          docs.forEach(d=>{
-            if(d.s>maxS)maxS=d.s;
-            const p=K[d.id];if(d.u<=(p?p.u:-1))return;
-            if(d.del){K[d.id]={h:'',u:d.u,del:1};if(c!=='pt_config')delete maps[c][d.id];changed=true;return;}
-            const v=c==='pt_config'?(d.rec?d.rec.v:undefined):d.rec;if(v===undefined)return;
-            K[d.id]={h:fbHash(JSON.stringify(v)),u:d.u};
-            if(c!=='pt_config'&&!(d.id in maps[c]))fresh[c][d.id]=v;else maps[c][d.id]=v;
-            changed=true;
-          });
-          if(c!=='pt_config')maps[c]={...fresh[c],...maps[c]}; // le righe nuove arrivano in cima, come quando le inserisci
-        }
-        fbState.pull=maxS;fbSaveState();
+        const maps=fbTrack();let changed=false;const fresh={};FB_ALL.forEach(c=>fresh[c]={});
+        const docs=await fbQueryAll(tok,fbState.ptr);
+        docs.forEach(d=>{
+          const c=d.c;if(!maps[c])return;
+          const K=fbState.k[c]||(fbState.k[c]={}),p=K[d.id];
+          if(d.u<=(p?p.u:-1))return; // già visto (es. una riga scritta da questo dispositivo)
+          if(d.del){K[d.id]={h:'',u:d.u,del:1};if(c!=='pt_config')delete maps[c][d.id];changed=true;return;}
+          const v=c==='pt_config'?(d.rec?d.rec.v:undefined):d.rec;if(v===undefined)return;
+          K[d.id]={h:fbHash(JSON.stringify(v)),u:d.u};
+          if(c!=='pt_config'&&!(d.id in maps[c]))fresh[c][d.id]=v;else maps[c][d.id]=v;
+          changed=true;
+        });
+        FB_ARR.forEach(([c])=>{maps[c]={...fresh[c],...maps[c]};}); // le righe nuove arrivano in cima
+        if(docs.length&&docs[docs.length-1].st)fbState.ptr=docs[docs.length-1].st;
+        fbSaveState();
         if(changed)applyRemoteData(fbExt(maps));
         await fbPushDirty(tok);
       }
+      fbPausedUntil=0;
       localStorage.setItem('pt_fb_last',new Date().toISOString());
       fbStatusMsg('Sincronizzato — '+new Date().toLocaleString('it-IT'),true);
     }catch(e){
       if(e&&e.status===401)fbTok={id:'',exp:0};
+      if(e&&e.quota)fbPausedUntil=Date.now()+30*60000; // limite giornaliero: riprovo tra mezz'ora
       if(/SESSIONE_SCADUTA/.test((e&&e.message)||'')){fbAuth=null;localStorage.removeItem('pt_fb_auth');fbRenderCard();}
       fbStatusMsg(fbErr(e),false);
     }
@@ -4085,16 +4106,17 @@
     const em=val('fb-mail').trim(),pw=$('fb-pw').value;
     if(!em||!pw){fbStatusMsg('Inserisci email e password.',false);return;}
     fbStatusMsg('Accesso in corso…');
-    try{await fbSignIn(em,pw);$('fb-pw').value='';fbState={pull:-1,k:{}};fbSaveState();fbRenderCard();await fbSync();}
+    try{await fbSignIn(em,pw);$('fb-pw').value='';fbState={v:2,ptr:null,init:false,k:{},old:!!fbState.old};fbSaveState();fbRenderCard();await fbSync(true);}
     catch(e){fbStatusMsg(fbErr(e),false);}
   });
   $('fb-pw').addEventListener('keydown',e=>{if(e.key==='Enter')$('fb-login').click();});
-  $('fb-sync-now').addEventListener('click',()=>fbSync());
+  $('fb-sync-now').addEventListener('click',()=>fbSync(true));
   $('fb-logout').addEventListener('click',()=>{
     if(!confirm('Uscire da Firebase su questo dispositivo? I dati restano qui, ma smettono di sincronizzarsi.'))return;
-    fbAuth=null;fbTok={id:'',exp:0};fbState={pull:-1,k:{}};localStorage.removeItem('pt_fb_auth');fbSaveState();fbRenderCard();fbStatusMsg('Non collegato.');
+    fbAuth=null;fbTok={id:'',exp:0};fbState={v:2,ptr:null,init:false,k:{}};localStorage.removeItem('pt_fb_auth');fbSaveState();fbRenderCard();fbStatusMsg('Non collegato.');
   });
-  setInterval(()=>{if(fbActive()&&!document.hidden)fbSync();},60000);
+  // controllo ogni 2 minuti, solo con la pagina in primo piano (una lettura se non è cambiato niente)
+  setInterval(()=>{if(fbActive()&&!document.hidden)fbSync();},120000);
   document.addEventListener('visibilitychange',()=>{if(!document.hidden&&fbActive())fbSync();});
   fbRenderCard();
   // ===== fine Firebase =====
