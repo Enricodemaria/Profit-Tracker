@@ -3918,12 +3918,20 @@
     if(/SESSIONE_SCADUTA/.test(m))return 'Sessione scaduta: accedi di nuovo';
     if((e&&e.status===403)||/PERMISSION_DENIED|insufficient permissions/i.test(m))return 'Permesso negato: controlla le regole di Firestore';
     if(/Failed to fetch|NetworkError|Load failed/i.test(m))return 'Nessuna connessione: i dati restano sul dispositivo e si allineano appena torna la rete';
+    if((e&&e.status===429)||/RESOURCE_EXHAUSTED|quota/i.test(m))return 'Firebase ha limitato le scritture (troppe richieste o limite giornaliero del piano gratuito). Le righe non ancora inviate restano in coda: riprovo da solo più tardi.';
     return m;
   }
+  const fbSleep=ms=>new Promise(r=>setTimeout(r,ms));
   async function fbPost(url,body,tok){
     const h={'Content-Type':'application/json'};if(tok)h.Authorization='Bearer '+tok;
-    const r=await fetch(url,{method:'POST',headers:h,body:JSON.stringify(body)});
-    let j=null;try{j=await r.json();}catch(e){}
+    let r,j=null;
+    // se Firebase frena (troppe richieste) riprovo con pause crescenti: 2, 4, 8, 16, 32 secondi
+    for(let attempt=0;;attempt++){
+      r=await fetch(url,{method:'POST',headers:h,body:JSON.stringify(body)});
+      j=null;try{j=await r.json();}catch(e){}
+      if((r.status===429||r.status===503)&&attempt<5){fbStatusMsg(`Firebase chiede di rallentare: riprovo tra ${2**(attempt+1)} secondi…`);await fbSleep(2000*2**attempt);continue;}
+      break;
+    }
     if(!r.ok){const m=(j&&j.error&&(j.error.message||j.error.status))||('HTTP '+r.status);const err=new Error(typeof m==='string'?m:JSON.stringify(m));err.status=r.status;throw err;}
     return j;
   }
@@ -3978,12 +3986,18 @@
       if(!e.d)return;
       const rec=e.del?null:(c==='pt_config'?{v:maps.pt_config[id]}:maps[c][id]);
       if(!e.del&&rec===undefined)return;
-      writes.push({update:{name:FB_ROOT+'/'+c+'/'+id,fields:fbFields(rec,e.u,e.del,t0)}});
+      writes.push({c,id,w:{update:{name:FB_ROOT+'/'+c+'/'+id,fields:fbFields(rec,e.u,e.del,t0)}}});
     }));
-    for(let i=0;i<writes.length;i+=400)await fbPost(FB_URL+':commit',{writes:writes.slice(i,i+400)},tok);
-    FB_ALL.forEach(c=>Object.values(fbState.k[c]||{}).forEach(e=>{delete e.d;}));
-    if(writes.length&&t0>fbState.pull)fbState.pull=t0;
-    fbSaveState();return writes.length;
+    const N=100;
+    for(let i=0;i<writes.length;i+=N){
+      const part=writes.slice(i,i+N);
+      await fbPost(FB_URL+':commit',{writes:part.map(x=>x.w)},tok);
+      part.forEach(x=>{const e=(fbState.k[x.c]||{})[x.id];if(e)delete e.d;});
+      if(t0>fbState.pull)fbState.pull=t0;
+      fbSaveState();
+      if(writes.length>N){fbStatusMsg(`Caricamento: ${Math.min(i+N,writes.length)} di ${writes.length} righe…`);if(i+N<writes.length)await fbSleep(500);}
+    }
+    return writes.length;
   }
   function fbExt(maps){
     const a=c=>Object.values(maps[c]||{}),cfg=maps.pt_config||{};
@@ -4000,10 +4014,14 @@
     if(!total){
       if(!confirm(`Il database è ancora vuoto. Carico i dati di questo dispositivo (${moves.length} movimenti)?`)){fbAuth=null;fbTok={id:'',exp:0};localStorage.removeItem('pt_fb_auth');fbRenderCard();fbStatusMsg('Caricamento annullato: niente è stato inviato e non sei collegato.',false);return false;}
       fbStatusMsg('Carico i dati sul database…');
+      fbState.pull=0;fbSaveState();
       const n=await fbPushDirty(tok);fbStatusMsg(`Fatto: ${n} righe caricate.`,true);return true;
     }
     const nm=remote.pt_moves.filter(d=>!d.del).length;
-    const replace=confirm(`Sul database ci sono già ${nm} movimenti.\n\nOK = usa i dati del database su questo dispositivo (consigliato)\nAnnulla = unisci con i dati di questo dispositivo`);
+    const local=fbMaps(fbSnapshot());
+    const partial=FB_ARR.every(([c])=>remote[c].filter(d=>!d.del).every(d=>d.id in local[c]));
+    if(partial)fbStatusMsg('Il database contiene solo righe già presenti qui: completo il caricamento…');
+    const replace=partial?false:confirm(`Sul database ci sono già ${nm} movimenti.\n\nOK = usa i dati del database su questo dispositivo (consigliato)\nAnnulla = unisci con i dati di questo dispositivo`);
     const maps=replace?{}:fbMaps(fbSnapshot());
     FB_ALL.forEach(c=>{
       const K=fbState.k[c]={};if(replace)maps[c]=c==='pt_config'?{...fbSnapshot().config}:{};
