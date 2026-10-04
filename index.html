@@ -3976,7 +3976,7 @@
     try{pc=JSON.parse(localStorage.getItem('tk_promo_cfg')||'{}');}catch(e){}
     const idsS=ids.map(x=>{const {pp_pass,pin,cc_num,cc_sca,cc_cvv,...rest}=x;return {...rest,books:(x.books||[]).map(b=>({book:b.book,limit:b.limit}))};});
     return {arrays:{moves,cashmoves,drafts,recurring,promos:(typeof promos!=='undefined'&&Array.isArray(promos))?promos:[],savedMultiples:sm,ids:idsS},
-      config:{books,tipos,games,cashStart,cashActual,cashActualTs,cashManual:{v:cashManual,ts:cashManualTs},rsStake:rsStakeGlobal,rsTp:rsTpGlobal,rsFunRules,tgCfg:tg,promoCfg:pc}};
+      config:{books,tipos,games,cashStart,cashActual,cashActualTs,cashManual:{v:cashManual,ts:cashManualTs},rsStake:rsStakeGlobal,rsTp:rsTpGlobal,rsFunRules,...((tg&&(tg.token||tg.chat))?{tgCfg:tg}:{}),promoCfg:pc}}; // Telegram vuoto: non lo invio, così non cancella quello buono
   }
   const fbId=r=>{let id=r.uid||r.id||r.key||r.label;id=id!==undefined&&id!==null&&id!==''?String(id):'h_'+fbHash(JSON.stringify(r));return id.replace(/[^A-Za-z0-9_.\-]/g,'_').slice(0,140);};
   function fbMaps(snap){const m={};FB_ARR.forEach(([c,key])=>{const mm={};(snap.arrays[key]||[]).forEach(r=>{if(r&&typeof r==='object')mm[fbId(r)]=r;});m[c]=mm;});m.pt_config=snap.config;return m;}
@@ -4605,7 +4605,11 @@
     runRecurring();refreshSelects();renderMoves();renderSetup();renderRecurring();renderAnag();renderCash();renderCashSummary();renderDraftsBadge();
     if(typeof loadPromo==='function'){loadPromo();if(typeof renderPromo==='function')renderPromo();}
     if(Array.isArray(data.savedMultiples)){localStorage.setItem('mb_saved_multiples',JSON.stringify(data.savedMultiples));if(typeof loadSaved==='function'){loadSaved();if(typeof renderSaved==='function')renderSaved();}}
-    if(data.tgCfg){localStorage.setItem('mb_tg',JSON.stringify(data.tgCfg));if(typeof tgLoad==='function')tgLoad();}
+    // Telegram: impostazioni vuote in arrivo non cancellano mai token e chat già presenti su questo dispositivo
+    if(data.tgCfg&&typeof data.tgCfg==='object'&&(data.tgCfg.token||data.tgCfg.chat)){
+      let cur={};try{cur=JSON.parse(localStorage.getItem('mb_tg')||'{}')||{};}catch(e){}
+      localStorage.setItem('mb_tg',JSON.stringify({...cur,...data.tgCfg}));if(typeof tgLoad==='function')tgLoad();
+    }
     if(data.promoCfg){localStorage.setItem('tk_promo_cfg',JSON.stringify(data.promoCfg));if(typeof promoCfgApplyToUI==='function')promoCfgApplyToUI();}
     if(!$('summary').classList.contains('hidden'))renderSummary();
   }
@@ -5269,6 +5273,7 @@
       auto:$('tg-auto').checked,watch:$('tg-watch').checked,
       hours:Math.max(0,numParse(($('tg-hours').value||'2').replace(',','.'))||2)};
     localStorage.setItem('mb_tg',JSON.stringify(tgCfg));
+    if(typeof gsScheduleSync==='function')gsScheduleSync(); // token e chat vanno subito sul server
     tgStatus('Impostazioni salvate.',true);
   }
   async function tgSend(text){
