@@ -5692,19 +5692,26 @@
     if(data.imageDataUrl||data.image){pendingPromoImage=data.imageDataUrl||data.image;renderPromoImagePreview();}
     $('modal-promo').classList.remove('hidden');
   }
+  // dati in arrivo dall'estensione: dopo il "#" (versioni nuove, nessun limite di lunghezza) o dopo il "?" (vecchie)
+  function linkParams(){
+    const p=new URLSearchParams(location.search);
+    const h=location.hash.replace(/^#/,'');
+    if(h&&h.includes('='))new URLSearchParams(h).forEach((v,k)=>p.set(k,v));
+    return p;
+  }
   function promoFromUrlParams(){
-    const qs=new URLSearchParams(location.search);
+    const qs=linkParams();
     if(!qs.has('promo_deadline')&&!qs.has('promo_body')&&!qs.has('promo_book'))return;
     openPromoReviewModal({book:qs.get('promo_book')||'',deadline:qs.get('promo_deadline')||'',body:qs.get('promo_body')||'',imageDataUrl:qs.get('promo_image')||''});
     qs.delete('promo_book');qs.delete('promo_deadline');qs.delete('promo_body');qs.delete('promo_image');
     const rest=qs.toString();
-    history.replaceState(null,'',location.pathname+(rest?'?'+rest:'')+location.hash);
+    history.replaceState(null,'',location.pathname+(rest?'?'+rest:''));
   }
   promoFromUrlParams();
 
   // ---- ricezione match dall'estensione RobinOdds (via parametri URL) ----
   function calcFromUrlParams(){
-    const qs=new URLSearchParams(location.search);
+    const qs=linkParams();
     if(!qs.has('calc_event')&&!qs.has('calc_back')&&!qs.has('calc_lay')&&!qs.has('calc_stake'))return;
     document.querySelectorAll('#main-tabs .tab').forEach(x=>x.classList.remove('active'));
     document.querySelectorAll('.pane').forEach(p=>p.classList.add('hidden'));
@@ -5734,13 +5741,13 @@
     qs.delete('calc_event');qs.delete('calc_stake');qs.delete('calc_back');qs.delete('calc_lay');qs.delete('calc_comm');
     qs.delete('calc_bonus');qs.delete('calc_playtype');qs.delete('calc_refund');
     const rest=qs.toString();
-    history.replaceState(null,'',location.pathname+(rest?'?'+rest:'')+location.hash);
+    history.replaceState(null,'',location.pathname+(rest?'?'+rest:''));
   }
   calcFromUrlParams();
 
   // ---- ricezione multipla completa dall'estensione RobinOdds Multi-Tool ----
   function multFromUrlParams(){
-    const qs=new URLSearchParams(location.search);
+    const qs=linkParams();
     if(!qs.has('calc_mult_legs'))return;
     let legs;
     try{legs=JSON.parse(qs.get('calc_mult_legs'));}catch(e){legs=null;}
@@ -5773,13 +5780,13 @@
     calcMult();
     qs.delete('calc_mult_legs');qs.delete('calc_mult_stake');qs.delete('calc_mult_book');qs.delete('calc_bonus');qs.delete('calc_playtype');
     const rest=qs.toString();
-    history.replaceState(null,'',location.pathname+(rest?'?'+rest:'')+location.hash);
+    history.replaceState(null,'',location.pathname+(rest?'?'+rest:''));
   }
   multFromUrlParams();
 
   // ---- ricezione riga dall'estensione RobinOdds Dutcher (via parametri URL) ----
   function dutchFromUrlParams(){
-    const qs=new URLSearchParams(location.search);
+    const qs=linkParams();
     if(!qs.has('calc_dutch_event')&&!qs.has('calc_dutch_odds1')&&!qs.has('calc_dutch_odds2'))return;
     document.querySelectorAll('#main-tabs .tab').forEach(x=>x.classList.remove('active'));
     document.querySelectorAll('.pane').forEach(p=>p.classList.add('hidden'));
@@ -5812,20 +5819,22 @@
     qs.delete('calc_dutch_event');qs.delete('calc_dutch_odds1');qs.delete('calc_dutch_odds2');qs.delete('calc_dutch_stake');
     qs.delete('calc_dutch_book1');qs.delete('calc_dutch_book2');qs.delete('calc_bonus');qs.delete('calc_playtype');qs.delete('calc_refund');
     const rest=qs.toString();
-    history.replaceState(null,'',location.pathname+(rest?'?'+rest:'')+location.hash);
+    history.replaceState(null,'',location.pathname+(rest?'?'+rest:''));
   }
   dutchFromUrlParams();
 
   function saldoFromUrlParams(){
-    const qs=new URLSearchParams(location.search);
+    const qs=linkParams();
     if(!qs.has('saldo_pid')||!qs.has('saldo_book')||!qs.has('saldo_val'))return;
     const pid=qs.get('saldo_pid'),book=qs.get('saldo_book'),v=numParse(qs.get('saldo_val'));
     if(pid&&book&&!isNaN(v))showToast('Saldo dall\'estensione ignorato: i saldi dei book ora si segnano a mano');
     qs.delete('saldo_pid');qs.delete('saldo_book');qs.delete('saldo_val');
     const rest=qs.toString();
-    history.replaceState(null,'',location.pathname+(rest?'?'+rest:'')+location.hash);
+    history.replaceState(null,'',location.pathname+(rest?'?'+rest:''));
   }
   saldoFromUrlParams();
+  // tracker già aperto: l'estensione cambia solo la parte dopo il "#" e la pagina non si ricarica
+  window.addEventListener('hashchange',()=>{promoFromUrlParams();calcFromUrlParams();multFromUrlParams();dutchFromUrlParams();saldoFromUrlParams();});
 
 
   if(window.innerWidth<=680){const t=document.querySelector('[data-tab="summary"]');if(t)t.click();}
