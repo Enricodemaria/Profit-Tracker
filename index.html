@@ -945,10 +945,9 @@
             <option value="">—</option>
             <option value="today">Oggi</option>
             <option value="yesterday">Ieri</option>
-            <option value="week">Ultima settimana</option>
-            <option value="month">Ultimo mese</option>
-            <option value="year">Ultimo anno</option>
-            <option value="ytd">Da inizio anno (YTD)</option>
+            <option value="week">Settimana corrente</option>
+            <option value="month">Mese corrente</option>
+            <option value="year">Anno corrente</option>
           </select>
         </div>
         <div class="field" style="max-width:180px;margin-bottom:0" id="mv-tipo-field"><label>Tipologia</label>
@@ -1048,10 +1047,9 @@
           <option value="">Sempre</option>
           <option value="today">Oggi</option>
           <option value="yesterday">Ieri</option>
-          <option value="week">Ultima settimana</option>
-          <option value="month">Ultimo mese</option>
-          <option value="year">Ultimo anno</option>
-          <option value="ytd">Da inizio anno (YTD)</option>
+          <option value="week">Settimana corrente</option>
+          <option value="month">Mese corrente</option>
+          <option value="year">Anno corrente</option>
         </select>
       </div>
       <span class="note" id="r-period-note" data-testid="r-period-note" style="margin:0 0 10px"></span>
@@ -1784,10 +1782,9 @@
           <option value="">Sempre</option>
           <option value="today">Oggi</option>
           <option value="yesterday">Ieri</option>
-          <option value="week">Ultima settimana</option>
-          <option value="month">Ultimo mese</option>
-          <option value="year">Ultimo anno</option>
-          <option value="ytd">Da inizio anno (YTD)</option>
+          <option value="week">Settimana corrente</option>
+          <option value="month">Mese corrente</option>
+          <option value="year">Anno corrente</option>
           <option value="custom">Personalizzato</option>
         </select>
       </div>
@@ -2626,10 +2623,9 @@
     let from='',to=today;
     if(p==='today'){from=today;}
     else if(p==='yesterday'){const d=new Date(now);d.setDate(d.getDate()-1);from=to=isoDate(d);}
-    else if(p==='week'){const d=new Date(now);d.setDate(d.getDate()-6);from=isoDate(d);}
-    else if(p==='month'){const d=new Date(now);d.setMonth(d.getMonth()-1);from=isoDate(d);}
-    else if(p==='year'){const d=new Date(now);d.setFullYear(d.getFullYear()-1);from=isoDate(d);}
-    else if(p==='ytd'){from=`${now.getFullYear()}-01-01`;}
+    else if(p==='week'){from=(()=>{const d=new Date(now);d.setDate(d.getDate()-((d.getDay()+6)%7));return isoDate(d);})();}
+    else if(p==='month'){from=isoDate(new Date(now.getFullYear(),now.getMonth(),1));}
+    else if(p==='year'||p==='ytd'){from=`${now.getFullYear()}-01-01`;}
     else {$('mv-from').value='';$('mv-to').value='';renderMoves();return;}
     $('mv-from').value=from;$('mv-to').value=to;renderMoves();
   });
@@ -4310,10 +4306,9 @@
     const now=new Date(),today=isoDate(now);
     if(p==='today')return{from:today,to:today};
     if(p==='yesterday'){const d=new Date(now);d.setDate(d.getDate()-1);return{from:isoDate(d),to:isoDate(d)};}
-    if(p==='week'){const d=new Date(now);d.setDate(d.getDate()-6);return{from:isoDate(d),to:today};}
-    if(p==='month'){const d=new Date(now);d.setMonth(d.getMonth()-1);return{from:isoDate(d),to:today};}
-    if(p==='year'){const d=new Date(now);d.setFullYear(d.getFullYear()-1);return{from:isoDate(d),to:today};}
-    if(p==='ytd')return{from:`${now.getFullYear()}-01-01`,to:today};
+    if(p==='week')return{from:(()=>{const d=new Date(now);d.setDate(d.getDate()-((d.getDay()+6)%7));return isoDate(d);})(),to:today};
+    if(p==='month')return{from:isoDate(new Date(now.getFullYear(),now.getMonth(),1)),to:today};
+    if(p==='year'||p==='ytd')return{from:`${now.getFullYear()}-01-01`,to:today};
     return null;
   }
   $('r-preset').addEventListener('change',()=>{localStorage.setItem('tk_sum_period',val('r-preset'));renderSummary();});
@@ -4399,7 +4394,7 @@
   function renderSummary(){
     rsBIdx=null;
     // le 4 card in alto seguono il periodo scelto (salvato); tabelle e grafici sotto restano su tutto
-    const rPer=localStorage.getItem('tk_sum_period')||'';if($('r-preset').value!==rPer)$('r-preset').value=rPer;
+    let rPer=localStorage.getItem('tk_sum_period')||'';if(rPer==='ytd'){rPer='year';localStorage.setItem('tk_sum_period','year');}if($('r-preset').value!==rPer)$('r-preset').value=rPer;
     const rRange=presetRange(rPer),inPer=m=>!rRange||((m.date||'')>=rRange.from&&(m.date||'')<=rRange.to);
     const pm=moves.filter(inPer);
     const cTot=pm.reduce((s,m)=>s+profitOf(m),0);
