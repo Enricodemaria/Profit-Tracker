@@ -4167,6 +4167,10 @@
     gsSaveCfg({client_email:parsed.client_email,private_key:parsed.private_key,sheetId,enabled:$('gs-enabled').checked,rawKey:raw});
     gsToken=null;
     gsStatus('Configurazione salvata.',true);
+    if($('gs-enabled').checked&&!fbActive()){
+      gsConnect().then(d=>{if(d)gsStatus('Collegato: dati caricati dal foglio ('+moves.length+' movimenti).',true);})
+        .catch(e=>gsStatus('Configurazione salvata, ma non riesco a raggiungere il foglio: '+e.message,false));
+    }
   });
   $('gs-test').addEventListener('click',async()=>{
     gsLoadCfg();
@@ -4608,13 +4612,25 @@
     if(data.promoCfg){localStorage.setItem('tk_promo_cfg',JSON.stringify(data.promoCfg));if(typeof promoCfgApplyToUI==='function')promoCfgApplyToUI();}
     if(!$('summary').classList.contains('hidden'))renderSummary();
   }
+  // un foglio senza movimenti, ID e depositi è "vuoto": non deve mai cancellare i dati del dispositivo
+  const gsSheetEmpty=d=>!d||(!(d.moves||[]).length&&!(d.ids||[]).length&&!(d.cashmoves||[]).length);
+  async function gsConnect(){
+    gsStatus('Carico i dati da Google Sheets…');
+    const data=await loadFromSheets();
+    if(!data)return false;
+    if(gsSheetEmpty(data)){
+      if(moves.length||ids.length||cashmoves.length){await saveToSheets();gsStatus(`Il foglio era vuoto: ho caricato i dati di questo dispositivo (${moves.length} movimenti). Sincronizzato.`,true);}
+      else gsStatus('Collegato. Il foglio è vuoto: si riempirà man mano che inserisci i dati.',true);
+      return false;
+    }
+    applyRemoteData(data);
+    return data;
+  }
   if(fbActive()){
     fbSync();
   } else if(gsCfg&&gsCfg.enabled){
-    gsStatus('Carico i dati da Google Sheets…');
-    loadFromSheets().then(data=>{
+    gsConnect().then(data=>{
       if(!data)return;
-      applyRemoteData(data);
       gsStatus('Dati aggiornati da Google Sheets — ultima sincronizzazione: '+new Date().toLocaleString('it-IT'),true);
       checkPendingPromo();
       if(!gsPromoTimer)gsPromoTimer=setInterval(checkPendingPromo,20000);
