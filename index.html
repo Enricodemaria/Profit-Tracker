@@ -1087,7 +1087,7 @@
     <div class="dragzone" id="chart-dragzone" data-testid="chart-dragzone">
       <div class="dragcard" draggable="true" data-chart-id="maggiorate" style="grid-column:1/-1">
         <span class="drag-handle" title="Trascina per riordinare">⠿</span>
-        <div class="chart-title">Maggiorate</div>
+        <div class="chart-title">Maggiorate <span class="note sum-per-lbl" style="margin:0;font-weight:500"></span></div>
         <div class="grid6" id="mg-stats-row" style="margin-bottom:14px">
           <div class="mgmini"><div class="lbl">Profitto</div><div class="big" id="mg-stat-profit" data-testid="mg-stat-profit">€ 0,00</div></div>
           <div class="mgmini"><div class="lbl">Mese in corso</div><div class="big" id="mg-stat-month" data-testid="mg-stat-month">€ 0,00</div></div>
@@ -1101,7 +1101,7 @@
       </div>
       <div class="dragcard" draggable="true" data-chart-id="rimborso" style="grid-column:1/-1">
         <span class="drag-handle" title="Trascina per riordinare">⠿</span>
-        <div class="chart-title">Rimborso Slot</div>
+        <div class="chart-title">Rimborso Slot <span class="note sum-per-lbl" style="margin:0;font-weight:500"></span></div>
         <div class="grid6" style="margin-bottom:0">
           <div class="mgmini"><div class="lbl">Profitto</div><div class="big" id="rs-stat-profit" data-testid="rs-stat-profit">€ 0,00</div></div>
           <div class="mgmini"><div class="lbl">Totale promo</div><div class="big" id="rs-stat-count" data-testid="rs-stat-count">0</div></div>
@@ -4484,11 +4484,14 @@
       `<tr style="font-weight:700"><td>Totale</td><td class="num">${moves.length}</td><td class="num ${tot>=0?'pos':'neg'}">${fmt(tot)}</td></tr></tbody>`;
 
     // maggiorate — statistiche e grafici dedicati (profitto solo su quelle concluse: vinte o perse)
-    const mgRows=moves.filter(m=>m.type==='Maggiorate'&&m.result);
-    const mgAll=moves.filter(m=>m.type==='Maggiorate');
+    // seguono il periodo scelto in alto (tranne "Mese in corso", che è sempre il mese attuale)
+    {const o=$('r-preset').selectedOptions[0];const t=rRange&&o?'· '+o.textContent.trim():'';document.querySelectorAll('.sum-per-lbl').forEach(e=>e.textContent=t);}
+    const mgRows=moves.filter(m=>m.type==='Maggiorate'&&m.result&&inPer(m));
+    const mgAll=moves.filter(m=>m.type==='Maggiorate'&&inPer(m));
+    const mgRowsAll=moves.filter(m=>m.type==='Maggiorate'&&m.result);
     const mgProfit=mgRows.reduce((s,m)=>s+profitOf(m),0);
     const mgp=$('mg-stat-profit');mgp.textContent=fmt(mgProfit);mgp.className='big '+(mgProfit>=0?'pos':'neg');
-    const mgProfitMonth=mgRows.filter(m=>(m.date||'').slice(0,7)===curYM).reduce((s,m)=>s+profitOf(m),0);
+    const mgProfitMonth=mgRowsAll.filter(m=>(m.date||'').slice(0,7)===curYM).reduce((s,m)=>s+profitOf(m),0);
     const mgm=$('mg-stat-month');mgm.textContent=fmt(mgProfitMonth);mgm.className='big '+(mgProfitMonth>=0?'pos':'neg');
     $('mg-stat-count').textContent=mgAll.length;
     const mgStaked=mgRows.reduce((s,m)=>s+(numParse(m.stake)||0),0);
@@ -4515,13 +4518,15 @@
     $('mg-chart-cum').innerHTML=mgCumData.length?svgLine(mgCumData,300,16,chartW('mg-chart-cum',1000)):emptyChart();
 
     // rimborso slot — statistiche dedicate (profitto sempre calcolabile, anche col Bonus Monetizzato ancora vuoto: conta 0)
-    const rsAll=moves.filter(m=>m.type==='Rimborso Slot');
+    // seguono il periodo scelto in alto (tranne "Real/Fun da ricevere", che è ciò che ti spetta oggi)
+    const rsAll=moves.filter(m=>m.type==='Rimborso Slot'&&inPer(m));
+    const rsAllTime=moves.filter(m=>m.type==='Rimborso Slot');
     const rsProfit=rsAll.reduce((s,m)=>s+profitOf(m),0);
     const rsp=$('rs-stat-profit');rsp.textContent=fmt(rsProfit);rsp.className='big '+(rsProfit>=0?'pos':'neg');
     $('rs-stat-count').textContent=rsAll.filter(m=>m.rsKind!=='bonus').length;
     // "da ricevere" ha senso solo per le promo ancora aperte (Bonus Monetizzato non ancora inserito)
     // Real e Fun attesi delle promo perse non ancora risolte (niente bonus registrato né segnate come controllate)
-    const rsPending=rsAll.filter(rsPendingPromo);
+    const rsPending=rsAllTime.filter(rsPendingPromo);
     $('rs-stat-real').textContent=fmt(rsPending.reduce((s,m)=>s+rimborsoAttesi(m).realAtteso,0));
     $('rs-stat-fun').textContent=fmt(rsPending.reduce((s,m)=>s+rimborsoAttesi(m).funAtteso,0));
     const rsEvTot=rsAll.reduce((s,m)=>s+(rsEVStored(m)||0),0);
