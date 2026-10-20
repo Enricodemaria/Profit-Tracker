@@ -937,8 +937,7 @@
     <div class="toolbar">
       <button class="btn mv-green" id="btnSingle" data-testid="btn-single">+ Movimento singolo</button>
       <button class="btn mv-green-ghost" id="btnBatch" data-testid="btn-batch">+ Inserimento multiplo</button>
-      <button class="btn" id="btnMaggiorata" data-testid="btn-maggiorata" style="background:var(--amber);color:#1a1400;border-color:var(--amber)">+ Maggiorata</button>
-      <button class="btn" id="btnMaggMulti" data-testid="btn-maggmulti" style="background:transparent;color:var(--amber);border-color:var(--amber)">+ Maggiorate multiple</button>
+      <button class="btn" id="btnMaggMulti" data-testid="btn-maggmulti" style="background:var(--amber);color:#1a1400;border-color:var(--amber)">+ Maggiorate</button>
       <button class="btn mv-purple" id="btnRimborso" data-testid="btn-rimborso">+ Rimborso Slot</button>
       <button class="btn mv-purple-ghost" id="btnRsBonus" data-testid="btn-rsbonus">+ Bonus</button>
       <button class="btn ghost" id="btnDrafts" data-testid="btn-drafts">Movimenti da completare<span class="badge hidden" id="drafts-badge" data-testid="drafts-badge" style="margin-left:6px"></span></button>
@@ -1007,7 +1006,7 @@
           </tr></thead>
           <tbody id="mg-moves-rows" data-testid="mg-moves-rows"></tbody>
         </table>
-        <p class="note hidden" id="mg-moves-empty">Nessuna maggiorata. Aggiungine una con "+ Maggiorata" qui sopra.</p>
+        <p class="note hidden" id="mg-moves-empty">Nessuna maggiorata. Aggiungine con "+ Maggiorate" qui sopra.</p>
       </div>
 
       <div id="mv-pane-rimborso" class="mpane hidden">
@@ -1063,8 +1062,8 @@
   <!-- ===== MAGGIORATE MULTIPLE ===== -->
   <div class="overlay hidden" id="modal-mgmulti">
     <div class="modal" style="max-width:860px">
-      <h3>Maggiorate multiple</h3>
-      <p class="sub">Data e note valgono per tutte le righe, ogni riga diventa una maggiorata. Lascia vuoto "Profitto" per segnarla Vinta/Persa dopo.</p>
+      <h3>Nuove maggiorate</h3>
+      <p class="sub">Una riga per maggiorata: se è una sola, compila solo la prima. Data e note valgono per tutte le righe. Lascia vuoto "Profitto" per segnarla Vinta/Persa dopo.</p>
       <div class="field row2">
         <div><label>Data</label><input type="date" id="mgm-date" data-testid="mgm-date"></div>
         <div><label>Note (per tutte)</label><input id="mgm-notes" data-testid="mgm-notes" placeholder="facoltative"></div>
@@ -2368,7 +2367,6 @@
     $('mg-notes').value=m?m.notes||'':'';
     $('modal-maggiorate').classList.remove('hidden');
   }
-  $('btnMaggiorata').addEventListener('click',()=>openMaggiorata(null));
   $('mg-save').addEventListener('click',()=>{
     const profitRaw=val('mg-profit');
     const hasProfit=profitRaw!=='';
