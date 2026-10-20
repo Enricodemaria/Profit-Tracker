@@ -390,6 +390,16 @@
   body{padding-top:env(safe-area-inset-top,0px)}
   @media(max-width:680px){
     .mobile-only{display:revert!important}
+    /* maggiorate multiple: una scheda per riga */
+    #modal-mgmulti thead{display:none}
+    #mgm-rows tr{display:grid;grid-template-columns:repeat(3,1fr);gap:8px 10px;padding:12px 0;border-bottom:1px solid var(--line)}
+    #mgm-rows td{display:flex;flex-direction:column;gap:3px;padding:0;border:0;text-align:left}
+    #mgm-rows td::before{content:attr(data-label);font-size:10px;letter-spacing:.04em;text-transform:uppercase;color:var(--dim);white-space:nowrap}
+    #mgm-rows td:first-child{grid-column:1/3}
+    #mgm-rows td:last-child{grid-column:3;grid-row:1;justify-content:flex-end;align-items:flex-end}
+    #mgm-rows td:last-child::before{content:none}
+    #mgm-rows td.mgm-win{justify-content:flex-start}
+    #mgm-rows input,#mgm-rows select{max-width:none!important;width:100%;min-width:0!important}
     /* preset siti: una scheda per sito */
     #modal-funrules thead{display:none}
     #fr-rows tr{display:grid;grid-template-columns:repeat(4,1fr);gap:8px 10px;padding:12px 0;border-bottom:1px solid var(--line)}
@@ -928,6 +938,7 @@
       <button class="btn mv-green" id="btnSingle" data-testid="btn-single">+ Movimento singolo</button>
       <button class="btn mv-green-ghost" id="btnBatch" data-testid="btn-batch">+ Inserimento multiplo</button>
       <button class="btn" id="btnMaggiorata" data-testid="btn-maggiorata" style="background:var(--amber);color:#1a1400;border-color:var(--amber)">+ Maggiorata</button>
+      <button class="btn" id="btnMaggMulti" data-testid="btn-maggmulti" style="background:transparent;color:var(--amber);border-color:var(--amber)">+ Maggiorate multiple</button>
       <button class="btn mv-purple" id="btnRimborso" data-testid="btn-rimborso">+ Rimborso Slot</button>
       <button class="btn mv-purple-ghost" id="btnRsBonus" data-testid="btn-rsbonus">+ Bonus</button>
       <button class="btn ghost" id="btnDrafts" data-testid="btn-drafts">Movimenti da completare<span class="badge hidden" id="drafts-badge" data-testid="drafts-badge" style="margin-left:6px"></span></button>
@@ -1045,6 +1056,32 @@
       <div class="modal-actions">
         <button class="btn ghost" data-close="modal-maggiorate">Annulla</button>
         <button class="btn" id="mg-save" data-testid="mg-save">Salva</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== MAGGIORATE MULTIPLE ===== -->
+  <div class="overlay hidden" id="modal-mgmulti">
+    <div class="modal" style="max-width:860px">
+      <h3>Maggiorate multiple</h3>
+      <p class="sub">Data e note valgono per tutte le righe, ogni riga diventa una maggiorata. Lascia vuoto "Profitto" per segnarla Vinta/Persa dopo.</p>
+      <div class="field row2">
+        <div><label>Data</label><input type="date" id="mgm-date" data-testid="mgm-date"></div>
+        <div><label>Note (per tutte)</label><input id="mgm-notes" data-testid="mgm-notes" placeholder="facoltative"></div>
+      </div>
+      <div style="overflow-x:auto;max-height:52vh;overflow-y:auto">
+        <table>
+          <thead><tr><th>Book</th><th class="num">Puntata €</th><th class="num">di cui Bonus €</th><th class="num">Quota</th><th class="num">Vincita</th><th class="num">Profitto €</th><th></th></tr></thead>
+          <tbody id="mgm-rows" data-testid="mgm-rows"></tbody>
+        </table>
+      </div>
+      <div style="margin-top:10px;display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap">
+        <button class="btn ghost" id="mgm-add" data-testid="mgm-add">+ Aggiungi riga</button>
+        <span class="sub" style="margin:0" id="mgm-total" data-testid="mgm-total"></span>
+      </div>
+      <div class="modal-actions">
+        <button class="btn ghost" data-close="modal-mgmulti">Annulla</button>
+        <button class="btn" id="mgm-save" data-testid="mgm-save">Salva tutte</button>
       </div>
     </div>
   </div>
@@ -2343,6 +2380,54 @@
     if(mgEditUid){const i=moves.findIndex(x=>x.uid===mgEditUid);if(i>=0)moves[i]={...moves[i],...rec};}
     else {rec.uid=uid();moves.unshift(rec);}
     save();renderMoves();renderDraftsBadge();$('modal-maggiorate').classList.add('hidden');
+  });
+
+  // ---- maggiorate multiple: un solo setup (data, note), una riga per book/puntata/quota ----
+  let mgmSeq=0;
+  function mgmAddRow(prev){
+    const k=mgmSeq++,list=books.length?books:DEFAULT_BOOKS;
+    let bk=list[0];
+    if(prev){const i=list.indexOf(prev.book);bk=list[(i+1)%list.length]||list[0];} // riga nuova: book successivo
+    const p=prev||{};
+    const tr=document.createElement('tr');tr.dataset.k=k;
+    const inp=(f,v,ph,w)=>`<td class="num"><input class="num mgm-${f}" data-testid="mgm-${f}-${k}" value="${esch(v||'')}" placeholder="${ph}" style="max-width:${w||100}px"></td>`;
+    tr.innerHTML=`<td><select class="mgm-book" data-testid="mgm-book-${k}" style="min-width:130px">${list.map(b=>`<option value="${esc(b)}"${b===bk?' selected':''}>${esc(b)}</option>`).join('')}</select></td>`+
+      inp('stake',p.stake,'0')+inp('bonus','','0',90)+inp('quota',p.quota,'es. 3,50',90)+
+      `<td class="num mgm-win" style="color:var(--dim)">—</td>`+inp('profit','','in sospeso',130)+
+      `<td style="text-align:center"><button class="btn ghost" style="padding:4px 10px" title="Rimuovi riga">✕</button></td>`;
+    tr.querySelector('button').addEventListener('click',()=>{tr.remove();mgmUpdate();});
+    $('mgm-rows').appendChild(tr);labelCells('mgm-rows');mgmUpdate();
+    return tr;
+  }
+  const mgmRowData=tr=>{const g=c=>tr.querySelector('.mgm-'+c).value.trim();return{book:g('book'),stake:g('stake'),bonus:g('bonus'),quota:g('quota'),profit:g('profit')};};
+  function mgmUpdate(){
+    let tot=0,stk=0,n=0;
+    [...$('mgm-rows').children].forEach(tr=>{const d=mgmRowData(tr),s=numParse(d.stake)||0,q=numParse(d.quota)||0;
+      tr.querySelector('.mgm-win').textContent=s>0&&q>0?fmt(s*q):'—';
+      stk+=s;if(d.profit!==''&&!isNaN(numParse(d.profit))){tot+=numParse(d.profit);n++;}});
+    const rows=$('mgm-rows').children.length;
+    $('mgm-total').innerHTML=`${rows} ${rows===1?'riga':'righe'} · puntato ${fmt(stk)}`+(n?` · profitto ${n<rows?'(concluse) ':''}<b class="${tot>=0?'pos':'neg'}">${fmtSigned(tot)}</b>`:'');
+  }
+  $('mgm-rows').addEventListener('input',mgmUpdate);
+  $('btnMaggMulti').addEventListener('click',()=>{
+    refreshSelects();$('mgm-rows').innerHTML='';mgmSeq=0;
+    $('mgm-date').value=new Date().toISOString().slice(0,10);$('mgm-notes').value='';
+    mgmAddRow(null);
+    $('modal-mgmulti').classList.remove('hidden');
+  });
+  $('mgm-add').addEventListener('click',()=>{const last=$('mgm-rows').lastElementChild;mgmAddRow(last?mgmRowData(last):null);});
+  $('mgm-save').addEventListener('click',()=>{
+    const date=val('mgm-date'),notes=val('mgm-notes');
+    const recs=[...$('mgm-rows').children].map(mgmRowData).filter(d=>numParse(d.stake)>0||d.profit!=='');
+    if(!recs.length){alert('Inserisci almeno una puntata.');return;}
+    if(recs.some(d=>d.profit!==''&&isNaN(numParse(d.profit)))){alert('Controlla i profitti: devono essere numeri.');return;}
+    const grp=uid();
+    recs.reverse().forEach(d=>{
+      const has=d.profit!=='',bn=numParse(d.bonus)||0;
+      moves.unshift({uid:uid(),date,book:d.book,pid:'',type:'Maggiorate',game:'Sport',info:'',notes,start:'0',reload:'',
+        end:has?(numParse(d.profit)-bn).toFixed(2):'0',bonus:d.bonus,stake:d.stake,quota:d.quota,result:has?(numParse(d.profit)>=0?'v':'p'):null,mgGroup:grp});
+    });
+    save();renderMoves();renderDraftsBadge();$('modal-mgmulti').classList.add('hidden');
   });
 
   // ---- telefono: etichette di colonna sulle celle (servono alle schede al posto delle tabelle) ----
