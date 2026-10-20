@@ -1880,10 +1880,10 @@
 <div class="overlay hidden" id="modal-funrules">
   <div class="modal" style="max-width:1040px">
     <h3>Preset siti — Rimborso Slot</h3>
-    <p class="sub">Quando scegli il book al Passo 1, Real e Fun si compilano da soli con il preset del sito (puoi sempre cambiarli). Stake e take profit del sito sostituiscono quelli generali per i calcoli di TP/SL ed EV; lasciali vuoti per usare quelli generali. Rollover e cap Fun servono al valore atteso: senza regola il Fun vale il 6% del nominale.</p>
+    <p class="sub">Quando scegli il book al Passo 1, Real e Fun si compilano da soli con il preset del sito (puoi sempre cambiarli). Stake e take profit del sito sostituiscono quelli generali per i calcoli di TP/SL ed EV; lasciali vuoti per usare quelli generali. EV € è il valore atteso fisso del sito (vuoto = calcolato dal modello). Rollover e cap Fun servono al valore atteso calcolato: senza regola il Fun vale il 6% del nominale.</p>
     <div style="overflow-x:auto">
       <table>
-        <thead><tr><th>Book</th><th class="num">Real %</th><th class="num">Real max €</th><th class="num">Fun %</th><th class="num">Fun max €</th><th class="num">Stake €</th><th class="num">TP %</th><th class="num">Rollover Fun (x)</th><th class="num">Cap Fun €</th><th></th></tr></thead>
+        <thead><tr><th>Book</th><th class="num">Real %</th><th class="num">Real max €</th><th class="num">Fun %</th><th class="num">Fun max €</th><th class="num">EV €</th><th class="num">Stake €</th><th class="num">TP %</th><th class="num">Rollover Fun (x)</th><th class="num">Cap Fun €</th><th></th></tr></thead>
         <tbody id="fr-rows" data-testid="fr-rows"></tbody>
       </table>
     </div>
@@ -2195,7 +2195,8 @@
   const RS_EV_FIXED={betsson:4};
   function rsEVSuggest(m){
     const st=rsStakeOf(m);
-    const fx=RS_EV_FIXED[String(m.book||'').trim().toLowerCase()];
+    const pr=rsPresetFor(m.book),pev=pr?numParse(pr.ev):NaN; // EV del preset del sito: vince sul calcolo
+    const fx=!isNaN(pev)&&String(pr.ev).trim()!==''?pev:RS_EV_FIXED[String(m.book||'').trim().toLowerCase()];
     if(fx!==undefined)return{ev:fx,S:st.S,limited:st.limited,fixed:true};
     return{ev:round05(rsEVFor(st.S,m)),S:st.S,limited:st.limited,site:st.site,fixed:false};
   }
@@ -2234,7 +2235,7 @@
   function setRsFunRules(r,noSync){rsFunRules=r&&typeof r==='object'?r:{};localStorage.setItem('tk_rs_funrules',JSON.stringify(rsFunRules));if(!noSync)gsScheduleSync();}
   const rsFunRuleFor=book=>rsFunRules[String(book||'').trim().toLowerCase()]||null;
   // preset per sito: Real/Fun della promo tipica + stake e take profit del sito (vuoti = quelli generali)
-  const RS_PRESET_KEYS=['realPct','realMax','funPct','funMax','stake','tp'];
+  const RS_PRESET_KEYS=['realPct','realMax','funPct','funMax','ev','stake','tp'];
   let rsPresets=(()=>{try{const r=JSON.parse(localStorage.getItem('tk_rs_presets'));if(r&&typeof r==='object')return r;}catch(e){}return{};})();
   function setRsPresets(r,noSync){rsPresets=r&&typeof r==='object'?r:{};localStorage.setItem('tk_rs_presets',JSON.stringify(rsPresets));if(!noSync)gsScheduleSync();}
   const rsPresetFor=book=>rsPresets[String(book||'').trim().toLowerCase()]||null;
@@ -2817,7 +2818,7 @@
     const r=rsEVSuggest({rsRealPct:val(prefix+'-realpct'),rsRealMax:val(prefix+'-realmax'),rsFunPct:val(prefix+'-funpct'),rsFunMax:val(prefix+'-funmax'),book:val(prefix+'-book')});
     const el=$(prefix+'-evprev');el.textContent=fmtSigned(r.ev);el.className=r.ev>=0?'pos':'neg';
     $(prefix+'-ev').placeholder='suggerito '+String(r.ev).replace('.',',');$(prefix+'-evuse').dataset.ev=r.ev;
-    $(prefix+'-stakeused').textContent=r.fixed?'— (valore fisso Betsson)':fmt(r.S)+(r.limited?' (limite della promo)':r.site?' (stake del sito)':' (il tuo stake)')+((numParse(val(prefix+'-funpct'))||0)>0?' · Fun: '+rsFunLabel(val(prefix+'-book')):'');
+    $(prefix+'-stakeused').textContent=r.fixed?'— (valore fisso del sito)':fmt(r.S)+(r.limited?' (limite della promo)':r.site?' (stake del sito)':' (il tuo stake)')+((numParse(val(prefix+'-funpct'))||0)>0?' · Fun: '+rsFunLabel(val(prefix+'-book')):'');
   }
   ['rs-realpct','rs-realmax','rs-funpct','rs-funmax'].forEach(id=>$(id).addEventListener('input',()=>computeStakeMax('rs')));
   ['rse-realpct','rse-realmax','rse-funpct','rse-funmax'].forEach(id=>$(id).addEventListener('input',()=>computeStakeMax('rse')));
@@ -3049,7 +3050,7 @@
     const cell=(cls,v,ph,w)=>`<td class="num"><input class="num ${cls}" style="max-width:${w||84}px" value="${esch(v??'')}" placeholder="${ph}"></td>`;
     const tr=document.createElement('tr');
     tr.innerHTML=`<td><select class="fr-book" style="min-width:130px">${list.map(b=>`<option value="${esc(b)}"${b.toLowerCase()===String(book||'').toLowerCase()?' selected':''}>${esc(b)}</option>`).join('')}</select></td>`+
-      cell('fr-realpct',pr.realPct,'—')+cell('fr-realmax',pr.realMax,'—')+cell('fr-funpct',pr.funPct,'—')+cell('fr-funmax',pr.funMax,'—')+
+      cell('fr-realpct',pr.realPct,'—')+cell('fr-realmax',pr.realMax,'—')+cell('fr-funpct',pr.funPct,'—')+cell('fr-funmax',pr.funMax,'—')+cell('fr-ev',pr.ev,'calcolato',90)+
       cell('fr-stake',pr.stake,String(rsStakeGlobal).replace('.',','))+cell('fr-tp',pr.tp,String(rsTpGlobal).replace('.',','),70)+
       cell('fr-roll',fr.rollover,'—')+cell('fr-cap',fr.cap,'nessuno',96)+
       `<td><button class="btn ghost" style="padding:4px 10px" title="Rimuovi">✕</button></td>`;
@@ -3073,14 +3074,14 @@
       const g=c=>tr.querySelector('.'+c).value.trim();
       const rollRaw=g('fr-roll'),roll=numParse(rollRaw),cap=numParse(g('fr-cap'));
       if(rollRaw!==''&&roll>=0)r[b]={rollover:roll,cap:cap>0?cap:null};
-      const pr={realPct:g('fr-realpct'),realMax:g('fr-realmax'),funPct:g('fr-funpct'),funMax:g('fr-funmax'),stake:g('fr-stake'),tp:g('fr-tp')};
+      const pr={realPct:g('fr-realpct'),realMax:g('fr-realmax'),funPct:g('fr-funpct'),funMax:g('fr-funmax'),ev:g('fr-ev'),stake:g('fr-stake'),tp:g('fr-tp')};
       if(RS_PRESET_KEYS.some(k=>pr[k]!==''))ps[b]=pr;
     });
     setRsFunRules(r,true);setRsPresets(ps);$('modal-funrules').classList.add('hidden');renderMoves();
   });
   // Passo 1: scegliendo il book, Real e Fun si compilano col preset del sito. Tocco solo i campi vuoti
   // o compilati in automatico, così quello che hai scritto tu non viene sovrascritto.
-  const RS_PRESET_FIELDS=[['rs-realpct','realPct'],['rs-realmax','realMax'],['rs-funpct','funPct'],['rs-funmax','funMax']];
+  const RS_PRESET_FIELDS=[['rs-realpct','realPct'],['rs-realmax','realMax'],['rs-funpct','funPct'],['rs-funmax','funMax'],['rs-ev','ev']];
   RS_PRESET_FIELDS.forEach(([id])=>$(id).addEventListener('input',()=>{delete $(id).dataset.auto;}));
   function rsApplyPreset(){
     const bk=val('rs-book'),p=rsPresetFor(bk),info=$('rs-preset-info');
@@ -3096,7 +3097,7 @@
   $('rs-preset-save').addEventListener('click',()=>{
     const bk=val('rs-book');if(!bk)return;
     const k=bk.trim().toLowerCase(),old=rsPresets[k]||{};
-    const pr={...old,realPct:val('rs-realpct'),realMax:val('rs-realmax'),funPct:val('rs-funpct'),funMax:val('rs-funmax')};
+    const pr={...old,realPct:val('rs-realpct'),realMax:val('rs-realmax'),funPct:val('rs-funpct'),funMax:val('rs-funmax'),ev:val('rs-ev')};
     RS_PRESET_KEYS.forEach(x=>{if(pr[x]===undefined)pr[x]='';});
     setRsPresets({...rsPresets,[k]:pr});
     RS_PRESET_FIELDS.forEach(([id])=>{if($(id).value.trim()!=='')$(id).dataset.auto='1';});
