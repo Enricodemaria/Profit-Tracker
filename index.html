@@ -1044,7 +1044,7 @@
       </div>
       <div class="field row2">
         <div><label>Puntata €</label><input id="mg-stake" data-testid="mg-stake" placeholder="0"></div>
-        <div><label>di cui Bonus €</label><input id="mg-bonus" data-testid="mg-bonus" placeholder="0"></div>
+        <div class="hidden"><label>di cui Bonus €</label><input id="mg-bonus" data-testid="mg-bonus" placeholder="0"></div><div></div>
       </div>
       <div class="field row2">
         <div><label>Quota</label><input id="mg-quota" data-testid="mg-quota" placeholder="es. 3,50"></div>
@@ -1070,7 +1070,7 @@
       </div>
       <div style="overflow-x:auto;max-height:52vh;overflow-y:auto">
         <table>
-          <thead><tr><th>Book</th><th class="num">Puntata €</th><th class="num">di cui Bonus €</th><th class="num">Quota</th><th class="num">Vincita</th><th class="num">Profitto €</th><th></th></tr></thead>
+          <thead><tr><th>Book</th><th class="num">Puntata €</th><th class="num">Quota</th><th class="num">Vincita</th><th class="num">Profitto €</th><th></th></tr></thead>
           <tbody id="mgm-rows" data-testid="mgm-rows"></tbody>
         </table>
       </div>
@@ -2356,7 +2356,7 @@
     save();renderMoves();
   }
   function openMaggiorata(u){
-    refreshSelects();mgEditUid=u||null;
+    refreshSelects();mgEditUid=u||null;fillSelect($('mg-book'),mgBooksByRecent());
     const m=u?moves.find(x=>x.uid===u):null;
     $('mg-title').textContent=u?'Modifica maggiorata':'Nuova maggiorata';
     $('mg-date').value=m?m.date||'':new Date().toISOString().slice(0,10);
@@ -2382,23 +2382,30 @@
   });
 
   // ---- maggiorate multiple: un solo setup (data, note), una riga per book/puntata/quota ----
-  let mgmSeq=0;
+  let mgmSeq=0,mgmBooks=[];
+  // book ordinati per ultimo utilizzo nelle maggiorate (data più recente, poi ordine di inserimento); gli altri dopo
+  function mgBooksByRecent(){
+    const all=books.length?books:DEFAULT_BOOKS,last={};
+    moves.forEach((m,i)=>{if(m.type!=='Maggiorate'||!m.book)return;const key=(m.date||'')+'|'+String(1e6-i).padStart(7,'0');if(!last[m.book]||key>last[m.book])last[m.book]=key;});
+    const used=all.filter(b=>last[b]).sort((a,b)=>last[b].localeCompare(last[a]));
+    return [...used,...all.filter(b=>!last[b])];
+  }
   function mgmAddRow(prev){
-    const k=mgmSeq++,list=books.length?books:DEFAULT_BOOKS;
+    const k=mgmSeq++,list=mgmBooks.length?mgmBooks:(books.length?books:DEFAULT_BOOKS);
     let bk=list[0];
     if(prev){const i=list.indexOf(prev.book);bk=list[(i+1)%list.length]||list[0];} // riga nuova: book successivo
     const p=prev||{};
     const tr=document.createElement('tr');tr.dataset.k=k;
     const inp=(f,v,ph,w)=>`<td class="num"><input class="num mgm-${f}" data-testid="mgm-${f}-${k}" value="${esch(v||'')}" placeholder="${ph}" style="max-width:${w||100}px"></td>`;
     tr.innerHTML=`<td><select class="mgm-book" data-testid="mgm-book-${k}" style="min-width:130px">${list.map(b=>`<option value="${esc(b)}"${b===bk?' selected':''}>${esc(b)}</option>`).join('')}</select></td>`+
-      inp('stake',p.stake,'0')+inp('bonus','','0',90)+inp('quota',p.quota,'es. 3,50',90)+
+      inp('stake',p.stake,'0')+inp('quota',p.quota,'es. 3,50',90)+
       `<td class="num mgm-win" style="color:var(--dim)">—</td>`+inp('profit','','in sospeso',130)+
       `<td style="text-align:center"><button class="btn ghost" style="padding:4px 10px" title="Rimuovi riga">✕</button></td>`;
     tr.querySelector('button').addEventListener('click',()=>{tr.remove();mgmUpdate();});
     $('mgm-rows').appendChild(tr);labelCells('mgm-rows');mgmUpdate();
     return tr;
   }
-  const mgmRowData=tr=>{const g=c=>tr.querySelector('.mgm-'+c).value.trim();return{book:g('book'),stake:g('stake'),bonus:g('bonus'),quota:g('quota'),profit:g('profit')};};
+  const mgmRowData=tr=>{const g=c=>tr.querySelector('.mgm-'+c).value.trim();return{book:g('book'),stake:g('stake'),bonus:'',quota:g('quota'),profit:g('profit')};};
   function mgmUpdate(){
     let tot=0,stk=0,n=0;
     [...$('mgm-rows').children].forEach(tr=>{const d=mgmRowData(tr),s=numParse(d.stake)||0,q=numParse(d.quota)||0;
@@ -2409,7 +2416,7 @@
   }
   $('mgm-rows').addEventListener('input',mgmUpdate);
   $('btnMaggMulti').addEventListener('click',()=>{
-    refreshSelects();$('mgm-rows').innerHTML='';mgmSeq=0;
+    refreshSelects();$('mgm-rows').innerHTML='';mgmSeq=0;mgmBooks=mgBooksByRecent();
     $('mgm-date').value=new Date().toISOString().slice(0,10);$('mgm-notes').value='';
     mgmAddRow(null);
     $('modal-mgmulti').classList.remove('hidden');
