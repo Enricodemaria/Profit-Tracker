@@ -2071,7 +2071,7 @@
     let repaired=false;
     moves.forEach(m=>{if(m.info==='Maggiorate'){m.type='Maggiorate';m.info='';repaired=true;}});
     // deduce l'esito dal segno del profitto per le Maggiorate storiche senza risultato esplicito
-    moves.forEach(m=>{if(m.type==='Maggiorate'&&!m.result&&(numParse(m.end)||numParse(m.bonus))){m.result=profitOf(m)>=0?'v':'p';repaired=true;}});
+    moves.forEach(m=>{if(m.type==='Maggiorate'&&m.result===undefined&&(numParse(m.end)||numParse(m.bonus))){m.result=profitOf(m)>=0?'v':'p';repaired=true;}});
     if(repaired)localStorage.setItem('tk_moves',JSON.stringify(moves));
     // sincronizza su Sheets solo se i dati arrivano da Sheets: mai spingere dati locali forse vecchi
     if(rsFreezeEV()){localStorage.setItem('tk_moves',JSON.stringify(moves));if(externalData)gsScheduleSync();}
@@ -4056,6 +4056,10 @@
   }catch(e){}
   const fbActive=()=>!!(fbAuth&&fbAuth.refreshToken);
   const fbSaveState=()=>{try{localStorage.setItem('pt_fb_state',JSON.stringify(fbState));}catch(e){}};
+  // righe che QUESTA scheda ha avuto davvero in memoria: solo queste, se spariscono, contano come cancellate.
+  // Una riga che il database conosce ma che qui non è mai arrivata (es. dati sovrascritti da un'altra scheda
+  // rimasta indietro) non viene cancellata: viene riscaricata.
+  const fbSeen={};
   const fbHash=str=>{let h=0x811c9dc5;for(let i=0;i<str.length;i++){h^=str.charCodeAt(i);h=Math.imul(h,0x01000193)>>>0;}return h.toString(16);};
   const fbSleep=ms=>new Promise(r=>setTimeout(r,ms));
   function fbErr(e){
@@ -4104,8 +4108,19 @@
     const q={from:[{collectionId:FB_COLL}],orderBy:[{field:{fieldPath:'st'},direction:'ASCENDING'}]};
     if(ptr)q.where={fieldFilter:{field:{fieldPath:'st'},op:'GREATER_THAN',value:{timestampValue:ptr}}};
     const j=await fbPost(FB_URL+':runQuery',{structuredQuery:q},tok);
-    return (j||[]).filter(x=>x.document).map(x=>{const fl=x.document.fields||{};const full=x.document.name.split('/').pop();const i=full.indexOf('~');
-      return {c:'pt_'+full.slice(0,i),id:full.slice(i+1),u:+((fl.u||{}).integerValue||0),st:(fl.st||{}).timestampValue||null,del:!!(fl.deleted||{}).booleanValue,rec:(fl.d&&fl.d.stringValue)?JSON.parse(fl.d.stringValue):null};});
+    return (j||[]).filter(x=>x.document).map(x=>fbParseDoc(x.document));
+  }
+  function fbParseDoc(doc){const fl=doc.fields||{};const full=doc.name.split('/').pop();const i=full.indexOf('~');
+    return {c:'pt_'+full.slice(0,i),id:full.slice(i+1),u:+((fl.u||{}).integerValue||0),st:(fl.st||{}).timestampValue||null,del:!!(fl.deleted||{}).booleanValue,rec:(fl.d&&fl.d.stringValue)?JSON.parse(fl.d.stringValue):null};}
+  // righe precise dal database (per riprendere quelle mancanti qui)
+  async function fbGetDocs(tok,list){
+    const out=[];
+    for(let i=0;i<list.length;i+=200){
+      const part=list.slice(i,i+200);
+      const j=await fbPost(FB_URL+':batchGet',{documents:part.map(x=>FB_ROOT+'/'+FB_COLL+'/'+x.c.slice(3)+'~'+x.id)},tok);
+      (j||[]).forEach(x=>{if(x.found)out.push(fbParseDoc(x.found));else if(x.missing){const d=fbParseDoc({name:x.missing,fields:{}});d.gone=true;out.push(d);}});
+    }
+    return out;
   }
   // istantanea dei dati da sincronizzare (come su Sheets)
   function fbSnapshot(){
@@ -4123,10 +4138,11 @@
   function fbTrack(){
     const now=Date.now(),maps=fbMaps(fbSnapshot());let dirty=false;
     FB_ALL.forEach(c=>{
-      const K=fbState.k[c]||(fbState.k[c]={}),map=maps[c];
+      const K=fbState.k[c]||(fbState.k[c]={}),map=maps[c],seen=fbSeen[c]||(fbSeen[c]=new Set());
+      Object.keys(map).forEach(id=>seen.add(id));
       Object.keys(map).forEach(id=>{const h=fbHash(JSON.stringify(map[id]===undefined?null:map[id]));const p=K[id];
         if(!p||p.del||p.h!==h){K[id]={h,u:Math.max(now,((p&&p.u)||0)+1),d:1};dirty=true;}});
-      if(c!=='pt_config')Object.keys(K).forEach(id=>{if(!(id in map)&&!K[id].del){K[id]={h:'',u:Math.max(now,(K[id].u||0)+1),del:1,d:1};dirty=true;}});
+      if(c!=='pt_config')Object.keys(K).forEach(id=>{if(!(id in map)&&!K[id].del&&seen.has(id)){K[id]={h:'',u:Math.max(now,(K[id].u||0)+1),del:1,d:1};dirty=true;}});
     });
     if(dirty)fbSaveState();
     return maps;
@@ -4205,8 +4221,16 @@
       const tok=await fbToken();
       if(!fbState.init){if(!(await fbFirstSync(tok))){fbBusy=false;return;}}
       else{
-        const maps=fbTrack();let changed=false;const fresh={};FB_ALL.forEach(c=>fresh[c]={});
+        const maps0=fbTrack(),missing=[];
+        FB_ARR.forEach(([c])=>Object.entries(fbState.k[c]||{}).forEach(([id,e])=>{if(!e.del&&!(id in maps0[c]))missing.push({c,id});}));
         const docs=await fbQueryAll(tok,fbState.ptr);
+        const back=missing.length?await fbGetDocs(tok,missing):[];
+        // dati della scheda DOPO le attese: così non perdo righe inserite o modificate nel frattempo
+        const maps=fbTrack();let changed=false;const fresh={};FB_ALL.forEach(c=>fresh[c]={});
+        back.forEach(d=>{const K=fbState.k[d.c];if(!K||!maps[d.c]||(d.id in maps[d.c]))return;
+          if(d.gone){delete K[d.id];return;}
+          if(d.del||!d.rec){K[d.id]={h:'',u:d.u,del:1};return;}
+          fresh[d.c][d.id]=d.rec;K[d.id]={h:fbHash(JSON.stringify(d.rec)),u:d.u};changed=true;});
         docs.forEach(d=>{
           const c=d.c;if(!maps[c])return;
           const K=fbState.k[c]||(fbState.k[c]={}),p=K[d.id];
@@ -4257,6 +4281,20 @@
   // controllo ogni 2 minuti, solo con la pagina in primo piano (una lettura se non è cambiato niente)
   setInterval(()=>{if(fbActive()&&!document.hidden)fbSync();},120000);
   document.addEventListener('visibilitychange',()=>{if(!document.hidden&&fbActive())fbSync();});
+  // più schede aperte (anche browser + icona Home): quando un'altra scheda salva, questa ricarica gli stessi dati
+  // invece di restare indietro e poi sovrascriverli. Insieme ai dati riprendo anche lo stato della sincronizzazione.
+  const XTAB_KEYS=new Set(['tk_moves','tk_ids','tk_cash','tk_drafts','tk_recurring','tk_books','tk_tipos','tk_games','tk_cash_start','tk_cash_actual','tk_cash_actual_ts','tk_cash_manual','tk_promo','mb_saved_multiples','pt_fb_state']);
+  let xtabTimer=null;
+  function xtabReload(){
+    if(fbBusy){xtabTimer=setTimeout(xtabReload,500);return;}
+    try{const st=JSON.parse(localStorage.getItem('pt_fb_state'));if(st&&st.v===2&&st.k)fbState=st;}catch(e){}
+    load();
+    refreshSelects();renderMoves();renderSetup();renderRecurring();renderAnag();renderCash();renderCashSummary();renderDraftsBadge();
+    if(typeof loadPromo==='function'){loadPromo();if(typeof renderPromo==='function')renderPromo();}
+    if(typeof loadSaved==='function'){loadSaved();if(typeof renderSaved==='function')renderSaved();}
+    if(!$('summary').classList.contains('hidden'))renderSummary();
+  }
+  window.addEventListener('storage',e=>{if(e.storageArea!==localStorage||!XTAB_KEYS.has(e.key))return;clearTimeout(xtabTimer);xtabTimer=setTimeout(xtabReload,300);});
   fbRenderCard();
   // ===== fine Firebase =====
   function gsScheduleSync(){
