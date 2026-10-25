@@ -63,6 +63,7 @@
   .rsp-item .rsp-main{flex:1 1 auto;min-width:0}
   .rsp-amt{white-space:nowrap;color:var(--amber);font-family:var(--f-mono);font-size:13px;text-align:right}
   .rsp-ok{color:var(--green)}
+  .rs-sugg{color:var(--dim)!important;font-style:italic}
   .tpsl{display:inline-flex;flex-direction:column;align-items:flex-end;gap:2px}
   .tpsl-tp,.tpsl-sl{font-size:11px;font-family:var(--f-mono);line-height:1.15;min-height:13px;white-space:nowrap}
   .tpsl-tp{color:var(--green)}
@@ -2834,6 +2835,25 @@
   ['rs','rse'].forEach(p=>$(p+'-evuse').addEventListener('click',()=>{const v=$(p+'-evuse').dataset.ev;if(v!==undefined)$(p+'-ev').value=String(v).replace('.',',');}));
 
   let rsSeq=0;
+  // ultimo saldo finale noto per ID+book (Rimborso Slot o "+ Bonus", il più recente per data; a pari data l'ultimo inserito)
+  function rsLastEnd(pid,book){
+    let best=null,bestKey='';
+    moves.forEach((m,i)=>{
+      if(m.type!=='Rimborso Slot'||m.pid!==pid||m.book!==book)return;
+      const e=m.rsKind==='bonus'?(m.rbMon&&m.rbMon.end):m.end;
+      if(e===undefined||e===null||String(e).trim()===''||isNaN(numParse(e)))return;
+      const key=(m.date||'')+'|'+String(1e7-i).padStart(8,'0');
+      if(key>bestKey){bestKey=key;best=String(e).trim();}
+    });
+    return best;
+  }
+  function rsSuggestStart(k){
+    const inp=$('rt-start-'+k);if(!inp)return;
+    const last=rsLastEnd(($('rt-id-'+k)||{}).value,($('rt-book-'+k)||{}).value);
+    if(inp.value.trim()!==''&&inp.dataset.sugg===undefined)return; // scritto da te: non lo tocco
+    if(last===null){inp.value='';delete inp.dataset.sugg;inp.classList.remove('rs-sugg');inp.title='';return;}
+    inp.value=last;inp.dataset.sugg=last;inp.classList.add('rs-sugg');inp.title='Ultimo saldo finale di questa ID su questo book: proposto come saldo iniziale';
+  }
   function rsAddRow(idLabel,bookName,prefill){
     const tb=$('rs-rows'),k=rsSeq++;
     const bookList=books.length?books:DEFAULT_BOOKS;
@@ -2849,6 +2869,10 @@
       `<td style="text-align:center"><button class="btn ghost" data-testid="rt-rm-${k}" style="padding:4px 10px" title="Rimuovi riga">✕</button></td>`;
     tb.appendChild(tr);
     tr.querySelector('button').addEventListener('click',()=>{tr.remove();rsEmptyCheck();updateRsTotal();});
+    const st=$('rt-start-'+k);
+    st.addEventListener('input',()=>{delete st.dataset.sugg;st.classList.remove('rs-sugg');});
+    ['rt-id-','rt-book-'].forEach(pfx=>$(pfx+k).addEventListener('change',()=>{rsSuggestStart(k);rsUpdateTpSl();updateRsTotal();}));
+    if(!p.start)rsSuggestStart(k);
     rsUpdateTpSl();
     return tr;
   }
@@ -2870,6 +2894,7 @@
     [...$('rs-rows').querySelectorAll('tr')].forEach(tr=>{
       const k=tr.dataset.k;
       const fake={start:$('rt-start-'+k).value,end:$('rt-end-'+k).value,rsBonusMon:$('rt-bonusmon-'+k).value,type:'Rimborso Slot'};
+      if(fake.end===''&&fake.rsBonusMon===''&&$('rt-start-'+k).dataset.sugg!==undefined)return; // solo saldo proposto
       tot+=profitOf(fake);
     });
     const el=$('rs-total');el.textContent=fmt(tot);el.className=Math.round(tot*100)>=0?'pos':'neg';
@@ -3147,7 +3172,7 @@
     [...$('rs-rows').querySelectorAll('tr')].forEach(tr=>{
       const k=tr.dataset.k;
       const s=$('rt-start-'+k).value,e=$('rt-end-'+k).value,bm=$('rt-bonusmon-'+k).value;
-      if(s===''&&e===''&&bm==='')return;
+      if(e===''&&bm===''&&(s===''||$('rt-start-'+k).dataset.sugg!==undefined))return; // solo saldo proposto: ID non giocata
       moves.unshift({uid:uid(),pid:$('rt-id-'+k).value,book:$('rt-book-'+k).value,start:s,end:e,rsBonusMon:bm,...common});added++;
     });
     save();renderMoves();$('modal-rs2').classList.add('hidden');
