@@ -2335,7 +2335,8 @@
     el.innerHTML=(withEmpty?'<option value=""></option>':'')+arr.map(o=>`<option value="${esc(o)}">${o===''?'—':esc(o)}</option>`).join('');
   }
   function refreshSelects(){
-    ['f-book','b-book','rec-book','c-book','c-book2','m-book','pb-book','d-book','mg-book'].forEach(id=>fillSelect($(id),books));
+    ['rec-book','c-book','c-book2','m-book','pb-book','d-book','mg-book'].forEach(id=>fillSelect($(id),books));
+    const mbOrder=booksByRecent('mb');['f-book','b-book'].forEach(id=>{const el=$(id),cur=el.value;fillSelect(el,mbOrder);if(cur&&mbOrder.includes(cur))el.value=cur;});
     fillSelect($('f-id'),ids.map(x=>x.label));
     ['c-id','c-id2'].forEach(id=>fillSelect($(id),ids.map(x=>x.label)));
     ['f-type','b-type','rec-type'].forEach(id=>fillSelect($(id),tipos));
@@ -2385,9 +2386,12 @@
   // ---- maggiorate multiple: un solo setup (data, note), una riga per book/puntata/quota ----
   let mgmSeq=0,mgmBooks=[];
   // book ordinati per ultimo utilizzo nelle maggiorate (data più recente, poi ordine di inserimento); gli altri dopo
-  function mgBooksByRecent(){
+  function mgBooksByRecent(){return booksByRecent('mg');}
+  // book ordinati per ultimo utilizzo in quella sezione: mg = maggiorate, rs = rimborso slot, mb = matched (tutto il resto)
+  function booksByRecent(kind){
+    const ok=kind==='mg'?m=>m.type==='Maggiorate':kind==='rs'?m=>m.type==='Rimborso Slot':m=>m.type!=='Maggiorate'&&m.type!=='Rimborso Slot';
     const all=books.length?books:DEFAULT_BOOKS,last={};
-    moves.forEach((m,i)=>{if(m.type!=='Maggiorate'||!m.book)return;const key=(m.date||'')+'|'+String(1e6-i).padStart(7,'0');if(!last[m.book]||key>last[m.book])last[m.book]=key;});
+    moves.forEach((m,i)=>{if(!ok(m)||!m.book)return;const key=(m.date||'')+'|'+String(1e6-i).padStart(7,'0');if(!last[m.book]||key>last[m.book])last[m.book]=key;});
     const used=all.filter(b=>last[b]).sort((a,b)=>last[b].localeCompare(last[a]));
     return [...used,...all.filter(b=>!last[b])];
   }
@@ -2750,7 +2754,7 @@
     const m=u?moves.find(x=>x.uid===u):null;
     $('single-title').textContent=u?'Modifica movimento':'Nuovo movimento';
     $('f-date').value=m?m.date||'':new Date().toISOString().slice(0,10);
-    $('f-book').value=m?m.book||books[0]:books[0];
+    $('f-book').value=m?m.book||books[0]:booksByRecent('mb')[0];
     $('f-id').value=m?m.pid||'':(ids[0]?ids[0].label:'');
     $('f-type').value=m?m.type||tipos[0]:tipos[0];
     $('f-game').value=m?m.game||games[0]:games[0];
@@ -2783,7 +2787,7 @@
   let batchSeq=0;
   function batchAddRow(idLabel,bookName,prefill){
     const tb=$('batch-rows'),k=batchSeq++;
-    const bookList=books.length?books:DEFAULT_BOOKS;
+    const bookList=booksByRecent('mb');
     const idOpts=ids.map(x=>`<option value="${esc(x.label)}"${x.label===idLabel?' selected':''}>${esc(x.label)}</option>`).join('');
     const bkOpts=bookList.map(b=>`<option value="${esc(b)}"${b===bookName?' selected':''}>${esc(b)}</option>`).join('');
     const p=prefill||{};
@@ -2856,7 +2860,7 @@
   }
   function rsAddRow(idLabel,bookName,prefill){
     const tb=$('rs-rows'),k=rsSeq++;
-    const bookList=books.length?books:DEFAULT_BOOKS;
+    const bookList=booksByRecent('rs');
     const idOpts=ids.map(x=>`<option value="${esc(x.label)}"${x.label===idLabel?' selected':''}>${esc(x.label)}</option>`).join('');
     const bkOpts=bookList.map(b=>`<option value="${esc(b)}"${b===bookName?' selected':''}>${esc(b)}</option>`).join('');
     const p=prefill||{};
@@ -2970,7 +2974,7 @@
   function openRsBonus(u,preset){
     refreshSelects();rbEditUid=u||null;
     const m=u?moves.find(x=>x.uid===u):null;
-    fillSelect($('rb-book'),books.length?books:DEFAULT_BOOKS);
+    fillSelect($('rb-book'),booksByRecent('rs'));
     $('rb-date').value=m?m.date:isoDate(new Date());
     if(m)$('rb-book').value=m.book;else if(preset&&preset.book)$('rb-book').value=preset.book;
     $('rb-kind').value=m&&m.rsBonusKind==='real'?'real':'fun';
@@ -3056,7 +3060,7 @@
   let rsGroupEditUids=null;
   function openRsGroupEdit(all){
     const f=all[0];rsGroupEditUids=all.map(m=>m.uid);
-    refreshSelects();fillSelect($('rs-book'),books.length?books:DEFAULT_BOOKS);
+    refreshSelects();fillSelect($('rs-book'),booksByRecent('rs'));
     $('rs-date').value=f.date||'';$('rs-book').value=f.book||'';$('rs-scadenza').value=f.scadenza||'';
     $('rs-realpct').value=f.rsRealPct??'';$('rs-realmax').value=f.rsRealMax??'';$('rs-funpct').value=f.rsFunPct??'';$('rs-funmax').value=f.rsFunMax??'';
     RS_PRESET_FIELDS.forEach(([id])=>delete $(id).dataset.auto);$('rs-preset-info').textContent='';
@@ -3143,7 +3147,7 @@
   $('btnRimborso').addEventListener('click',()=>{
     rsGroupEditUids=null;$('rs1-title').textContent='Rimborso Slot — Passo 1';$('rs-next').classList.remove('hidden');$('rs-group-save').classList.add('hidden');
     if(!ids.length){alert('Aggiungi prima delle ID nella pagina Setup.');return;}
-    fillSelect($('rs-book'),books.length?books:DEFAULT_BOOKS);
+    fillSelect($('rs-book'),booksByRecent('rs'));
     $('rs-date').value=new Date().toISOString().slice(0,10);
     $('rs-scadenza').value='';$('rs-realpct').value='';$('rs-realmax').value='';$('rs-funpct').value='';$('rs-funmax').value='';$('rs-ev').value='';$('rs-notes').value='';
     RS_PRESET_FIELDS.forEach(([id])=>delete $(id).dataset.auto);rsApplyPreset();
@@ -3186,7 +3190,7 @@
     const m=moves.find(x=>x.uid===u);if(!m)return;
     $('rse-date').value=m.date||'';
     fillSelect($('rse-id'),ids.map(x=>x.label));$('rse-id').value=m.pid||'';
-    fillSelect($('rse-book'),books.length?books:DEFAULT_BOOKS);$('rse-book').value=m.book||'';
+    fillSelect($('rse-book'),booksByRecent('rs'));$('rse-book').value=m.book||'';
     $('rse-scadenza').value=m.scadenza||'';
     $('rse-realpct').value=m.rsRealPct??'';
     $('rse-realmax').value=m.rsRealMax??'';
@@ -3212,7 +3216,7 @@
 
   $('btnBatch').addEventListener('click',()=>{
     if(!ids.length){alert('Aggiungi prima delle ID nella pagina Setup.');return;}
-    refreshSelects();
+    refreshSelects();$('b-book').value=booksByRecent('mb')[0];
     $('b-date').value=new Date().toISOString().slice(0,10);
     $('modal-batch1').classList.remove('hidden');
   });
