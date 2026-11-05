@@ -1418,6 +1418,16 @@
       <div id="games-list" data-testid="games-list"></div>
     </div>
     <div class="card" style="margin-bottom:20px">
+      <h2><span class="dot"></span>Info</h2>
+      <p class="sub">Le voci del menu "Info" dei movimenti (la voce vuota c'è sempre). "Fun bonus" ha un ruolo nel Riepilogo: i movimenti con questa info restano di riferimento e non entrano nel Totale.</p>
+      <div style="display:flex;gap:10px;margin-bottom:16px">
+        <input id="new-info" data-testid="new-info" placeholder="Nuova voce (es. Cashback)">
+        <button class="btn" id="add-info" data-testid="add-info">Aggiungi</button>
+        <button class="btn ghost" id="sort-infos" data-testid="sort-infos">Ordina A-Z</button>
+      </div>
+      <div id="infos-list" data-testid="infos-list"></div>
+    </div>
+    <div class="card" style="margin-bottom:20px">
       <h2><span class="dot"></span>Movimenti periodici</h2>
       <p class="sub">Genera automaticamente un movimento ricorrente (es. un abbonamento mensile) senza doverlo inserire ogni volta a mano.</p>
       <div class="mform">
@@ -1974,7 +1984,10 @@
   const DEFAULT_TIPOS=['Ricorrente','Esclusiva','Benvenuto','Profilazione','Abbonamento','Errore','Maggiorate','Altro'];
   const DEFAULT_GAMES=['Sport','Slot','Casino live','Lotterie','Virtuali'];
   let tipos=[],games=[];
-  const INFOS=['','Fun bonus'];
+  // voci di "Info" modificabili da Setup (la voce vuota c'è sempre). "Fun bonus" ha un ruolo nel Riepilogo.
+  let infos=(()=>{try{const v=JSON.parse(localStorage.getItem('tk_infos'));if(Array.isArray(v))return v.filter(x=>typeof x==='string'&&x.trim());}catch(e){}return['Fun bonus'];})();
+  const infoOpts=()=>['',...infos];
+  function setInfoSelect(el,v){v=v||'';if(v&&![...el.options].some(o=>o.value===v)){const o=document.createElement('option');o.value=v;o.textContent=v;el.appendChild(o);}el.value=v;}
   const DEFAULT_BOOKS=['Sisal','Snai','Eurobet','Goldbet','Lottomatica','Planetwin365','Bet365','Betfair','Betflag','Better','NetBet','Starcasinò','PokerStars','LeoVegas','William Hill','Betway','AdmiralBet','Betsson','888','Vincitu','E-play24','DAZN','Betwin360','DomusBet','MarathonBet','MyLotteries','Zonagioco','Starvegas','Staryes','Sportium','Bwin','GiocoDigitale','Giochi24','Quigioco','SportBet','Stake','Stanleybet','Altro'];
   // Book effettivamente riconosciuti dall'estensione (tutti tranne "Altro", che è un segnaposto generico).
   const EXTENSION_BOOKS=new Set(DEFAULT_BOOKS.filter(b=>b!=='Altro'));
@@ -2025,6 +2038,7 @@
       localStorage.setItem('tk_books',JSON.stringify(books));
       localStorage.setItem('tk_tipos',JSON.stringify(tipos));
       localStorage.setItem('tk_games',JSON.stringify(games));
+      if(Array.isArray(externalData.infos)){infos=externalData.infos.filter(x=>typeof x==='string'&&x.trim());localStorage.setItem('tk_infos',JSON.stringify(infos));}
       localStorage.setItem('tk_ids',JSON.stringify(ids));
       localStorage.setItem('tk_moves',JSON.stringify(moves));
       localStorage.setItem('tk_drafts',JSON.stringify(drafts));
@@ -2044,6 +2058,7 @@
       try{tipos=JSON.parse(localStorage.getItem('tk_tipos'));}catch(e){}
       if(!Array.isArray(tipos)||!tipos.length)tipos=DEFAULT_TIPOS.slice();
       try{games=JSON.parse(localStorage.getItem('tk_games'));}catch(e){}
+      try{const v=JSON.parse(localStorage.getItem('tk_infos'));if(Array.isArray(v))infos=v;}catch(e){}
       if(!Array.isArray(games)||!games.length)games=DEFAULT_GAMES.slice();
       try{ids=JSON.parse(localStorage.getItem('tk_ids'))||[];}catch(e){ids=[];}
       ids=ids.map(normId);
@@ -2086,6 +2101,7 @@
     localStorage.setItem('tk_books',JSON.stringify(books));
     localStorage.setItem('tk_tipos',JSON.stringify(tipos));
     localStorage.setItem('tk_games',JSON.stringify(games));
+    localStorage.setItem('tk_infos',JSON.stringify(infos));
     localStorage.setItem('tk_ids',JSON.stringify(ids));
     localStorage.setItem('tk_moves',JSON.stringify(moves));
     localStorage.setItem('tk_drafts',JSON.stringify(drafts));
@@ -2341,7 +2357,7 @@
     ['c-id','c-id2'].forEach(id=>fillSelect($(id),ids.map(x=>x.label)));
     ['f-type','b-type','rec-type'].forEach(id=>fillSelect($(id),tipos));
     ['f-game','b-game','rec-game'].forEach(id=>fillSelect($(id),games));
-    ['f-info','b-info'].forEach(id=>fillSelect($(id),INFOS));
+    ['f-info','b-info'].forEach(id=>fillSelect($(id),infoOpts()));
     const curTipo=$('mv-tipo').value,curBook=$('mv-book').value;
     $('mv-tipo').innerHTML='<option value="">Tutte</option>'+tipos.map(o=>`<option value="${esc(o)}">${esc(o)}</option>`).join('');
     $('mv-book').innerHTML='<option value="">Tutti</option>'+books.map(o=>`<option value="${esc(o)}">${esc(o)}</option>`).join('');
@@ -2758,7 +2774,7 @@
     $('f-id').value=m?m.pid||'':(ids[0]?ids[0].label:'');
     $('f-type').value=m?m.type||tipos[0]:tipos[0];
     $('f-game').value=m?m.game||games[0]:games[0];
-    $('f-info').value=m?m.info||'':'';
+    setInfoSelect($('f-info'),m?m.info:'');
     $('f-start').value=m?m.start??'':'';
     $('f-reload').value=m?m.reload??'':'';
     $('f-end').value=m?m.end??'':'';
@@ -3261,7 +3277,7 @@
     $('b-book').value=c.book||books[0];
     $('b-type').value=c.type||tipos[0];
     $('b-game').value=c.game||games[0];
-    $('b-info').value=c.info||'';
+    setInfoSelect($('b-info'),c.info);
     $('b-notes').value=c.notes||'';
     $('batch-summary').textContent=`${c.date||''} · ${c.type||''} · ${c.game||''}${c.info?' · '+c.info:''}`;
     $('batch-rows').innerHTML='';batchSeq=0;
@@ -3301,7 +3317,7 @@
     $('f-id').value=m.pid||(ids[0]?ids[0].label:'');
     $('f-type').value=m.type||tipos[0];
     $('f-game').value=m.game||games[0];
-    $('f-info').value=m.info||'';
+    setInfoSelect($('f-info'),m.info);
     $('f-start').value=m.start??'';
     $('f-reload').value=m.reload??'';
     $('f-end').value=m.end??'';
@@ -3367,7 +3383,20 @@
     $('games-list').innerHTML=games.map((g,i)=>`<span class="chip">${esc(g)}<button class="iconbtn" data-upgame="${i}" title="Sposta su" ${i===0?'disabled':''} style="padding:2px 4px">↑</button><button class="iconbtn" data-downgame="${i}" title="Sposta giù" ${i===games.length-1?'disabled':''} style="padding:2px 4px">↓</button><button data-rmgame="${i}">✕</button></span>`).join('')||'<p class="note">Nessun gioco.</p>';
     $('games-list').querySelectorAll('[data-rmgame]').forEach(b=>b.addEventListener('click',()=>{games.splice(+b.dataset.rmgame,1);save();renderSetup();refreshSelects();}));
     $('games-list').querySelectorAll('[data-upgame]').forEach(b=>b.addEventListener('click',()=>{const i=+b.dataset.upgame;if(i>0){[games[i-1],games[i]]=[games[i],games[i-1]];save();renderSetup();refreshSelects();}}));
-    $('games-list').querySelectorAll('[data-downgame]').forEach(b=>b.addEventListener('click',()=>{const i=+b.dataset.downgame;if(i<games.length-1){[games[i+1],games[i]]=[games[i],games[i+1]];save();renderSetup();refreshSelects();}}));  }
+    $('games-list').querySelectorAll('[data-downgame]').forEach(b=>b.addEventListener('click',()=>{const i=+b.dataset.downgame;if(i<games.length-1){[games[i+1],games[i]]=[games[i],games[i+1]];save();renderSetup();refreshSelects();}}));
+    const nInfo=v=>moves.filter(m=>m.info===v).length;
+    $('infos-list').innerHTML=infos.map((g,i)=>`<span class="chip">${esc(g)}<button class="iconbtn" data-upinfo="${i}" title="Sposta su" ${i===0?'disabled':''} style="padding:2px 4px">↑</button><button class="iconbtn" data-downinfo="${i}" title="Sposta giù" ${i===infos.length-1?'disabled':''} style="padding:2px 4px">↓</button><button class="iconbtn" data-edinfo="${i}" title="Rinomina" style="padding:2px 4px">✎</button><button data-rminfo="${i}">✕</button></span>`).join('')||'<p class="note">Nessuna voce: il menu Info avrà solo la voce vuota.</p>';
+    $('infos-list').querySelectorAll('[data-rminfo]').forEach(b=>b.addEventListener('click',()=>{const v=infos[+b.dataset.rminfo],n=nInfo(v);
+      if(!confirm(`Togliere "${v}" dal menu Info?`+(n?`\n\n${n} movimenti la usano: la mantengono, ma non potrai più sceglierla per i nuovi.`:'')+(v==='Fun bonus'?'\n\nAttenzione: "Fun bonus" serve al Riepilogo.':'')))return;
+      infos.splice(+b.dataset.rminfo,1);save();renderSetup();refreshSelects();}));
+    $('infos-list').querySelectorAll('[data-edinfo]').forEach(b=>b.addEventListener('click',()=>{const i=+b.dataset.edinfo,old=infos[i];
+      const nv=(prompt('Nuovo nome per "'+old+'":',old)||'').trim();if(!nv||nv===old)return;
+      if(infos.includes(nv)){alert('Questa voce esiste già.');return;}
+      const n=nInfo(old);let also=false;if(n)also=confirm(`${n} movimenti hanno Info "${old}". Rinomino anche in loro?`);
+      infos[i]=nv;if(also)moves.forEach(m=>{if(m.info===old)m.info=nv;});save();renderSetup();refreshSelects();if(also)renderMoves();}));
+    $('infos-list').querySelectorAll('[data-upinfo]').forEach(b=>b.addEventListener('click',()=>{const i=+b.dataset.upinfo;if(i>0){[infos[i-1],infos[i]]=[infos[i],infos[i-1]];save();renderSetup();refreshSelects();}}));
+    $('infos-list').querySelectorAll('[data-downinfo]').forEach(b=>b.addEventListener('click',()=>{const i=+b.dataset.downinfo;if(i<infos.length-1){[infos[i+1],infos[i]]=[infos[i],infos[i+1]];save();renderSetup();refreshSelects();}}));
+  }
   // ---- anagrafica ID ----
   function renderAnag(){
     const c=$('anag-list');c.innerHTML='';
@@ -3702,13 +3731,16 @@
   $('new-tipo').addEventListener('keydown',e=>{if(e.key==='Enter')$('add-tipo').click();});
   $('add-game').addEventListener('click',()=>{const v=val('new-game').trim();if(v&&!games.includes(v)){games.push(v);$('new-game').value='';save();renderSetup();refreshSelects();}});
   $('new-game').addEventListener('keydown',e=>{if(e.key==='Enter')$('add-game').click();});
+  $('add-info').addEventListener('click',()=>{const v=val('new-info').trim();if(v&&!infos.includes(v)){infos.push(v);$('new-info').value='';save();renderSetup();refreshSelects();}});
+  $('new-info').addEventListener('keydown',e=>{if(e.key==='Enter')$('add-info').click();});
+  $('sort-infos').addEventListener('click',()=>{infos.sort((a,b)=>a.localeCompare(b,'it',{sensitivity:'base'}));save();renderSetup();refreshSelects();});
   $('sort-books').addEventListener('click',()=>{books.sort((a,b)=>a.localeCompare(b,'it',{sensitivity:'base'}));save();renderSetup();refreshSelects();});
   $('sort-tipos').addEventListener('click',()=>{tipos.sort((a,b)=>a.localeCompare(b,'it',{sensitivity:'base'}));save();renderSetup();refreshSelects();});
   $('sort-games').addEventListener('click',()=>{games.sort((a,b)=>a.localeCompare(b,'it',{sensitivity:'base'}));save();renderSetup();refreshSelects();});
   $('new-id').addEventListener('keydown',e=>{if(e.key==='Enter')$('add-id').click();});
-  $('exp-json').addEventListener('click',()=>dl(new Blob([JSON.stringify({books,tipos,games,ids,moves,drafts,recurring,promos,cashmoves,cashStart,cashActual,cashActualTs,cashManual:{v:cashManual,ts:cashManualTs},rsStake:rsStakeGlobal,rsTp:rsTpGlobal,rsFunRules,rsPresets},null,2)],{type:'application/json'}),'profit-tracker-dati.json'));
+  $('exp-json').addEventListener('click',()=>dl(new Blob([JSON.stringify({books,tipos,games,infos,ids,moves,drafts,recurring,promos,cashmoves,cashStart,cashActual,cashActualTs,cashManual:{v:cashManual,ts:cashManualTs},rsStake:rsStakeGlobal,rsTp:rsTpGlobal,rsFunRules,rsPresets},null,2)],{type:'application/json'}),'profit-tracker-dati.json'));
   $('imp-json').addEventListener('click',()=>$('imp-file').click());
-  $('imp-file').addEventListener('change',e=>{const f=e.target.files[0];if(!f)return;const r=new FileReader();r.onload=()=>{try{const d=JSON.parse(r.result);if(Array.isArray(d.books))books=d.books;if(Array.isArray(d.tipos))tipos=d.tipos;if(Array.isArray(d.games))games=d.games;if(Array.isArray(d.ids))ids=d.ids.map(normId);if(Array.isArray(d.moves))moves=d.moves.map(m=>({uid:m.uid||uid(),...m}));if(Array.isArray(d.drafts))drafts=d.drafts.map(x=>({id:x.id||uid(),...x}));if(Array.isArray(d.recurring))recurring=d.recurring.map(r=>({uid:r.uid||uid(),...r}));if(Array.isArray(d.cashmoves))cashmoves=d.cashmoves.map(c=>({uid:c.uid||uid(),...c}));if(d.cashStart&&typeof d.cashStart==='object')cashStart=d.cashStart;if(d.cashActual&&typeof d.cashActual==='object')cashActual=d.cashActual;if(d.cashActualTs&&typeof d.cashActualTs==='object')cashActualTs=d.cashActualTs;if(d.cashManual&&typeof d.cashManual==='object'){cashManual=d.cashManual.v||{};cashManualTs=d.cashManual.ts||{};}if(numParse(d.rsStake)>0)setRsStakeGlobal(d.rsStake,true);if(numParse(d.rsTp)>0)setRsTpGlobal(d.rsTp,true);if(d.rsFunRules&&typeof d.rsFunRules==='object')setRsFunRules(d.rsFunRules,true);if(d.rsPresets&&typeof d.rsPresets==='object')setRsPresets(d.rsPresets,true);if(Array.isArray(d.promos)){promos=d.promos.map(p=>({uid:p.uid||uid(),...p}));savePromo();renderPromo();}rsFreezeEV();save();renderSetup();renderRecurring();renderAnag();renderMoves();renderDraftsBadge();renderCash();renderCashSummary();refreshSelects();alert('Dati caricati.');}catch(err){alert('File non valido.');}};r.readAsText(f);});
+  $('imp-file').addEventListener('change',e=>{const f=e.target.files[0];if(!f)return;const r=new FileReader();r.onload=()=>{try{const d=JSON.parse(r.result);if(Array.isArray(d.books))books=d.books;if(Array.isArray(d.tipos))tipos=d.tipos;if(Array.isArray(d.games))games=d.games;if(Array.isArray(d.infos))infos=d.infos;if(Array.isArray(d.ids))ids=d.ids.map(normId);if(Array.isArray(d.moves))moves=d.moves.map(m=>({uid:m.uid||uid(),...m}));if(Array.isArray(d.drafts))drafts=d.drafts.map(x=>({id:x.id||uid(),...x}));if(Array.isArray(d.recurring))recurring=d.recurring.map(r=>({uid:r.uid||uid(),...r}));if(Array.isArray(d.cashmoves))cashmoves=d.cashmoves.map(c=>({uid:c.uid||uid(),...c}));if(d.cashStart&&typeof d.cashStart==='object')cashStart=d.cashStart;if(d.cashActual&&typeof d.cashActual==='object')cashActual=d.cashActual;if(d.cashActualTs&&typeof d.cashActualTs==='object')cashActualTs=d.cashActualTs;if(d.cashManual&&typeof d.cashManual==='object'){cashManual=d.cashManual.v||{};cashManualTs=d.cashManual.ts||{};}if(numParse(d.rsStake)>0)setRsStakeGlobal(d.rsStake,true);if(numParse(d.rsTp)>0)setRsTpGlobal(d.rsTp,true);if(d.rsFunRules&&typeof d.rsFunRules==='object')setRsFunRules(d.rsFunRules,true);if(d.rsPresets&&typeof d.rsPresets==='object')setRsPresets(d.rsPresets,true);if(Array.isArray(d.promos)){promos=d.promos.map(p=>({uid:p.uid||uid(),...p}));savePromo();renderPromo();}rsFreezeEV();save();renderSetup();renderRecurring();renderAnag();renderMoves();renderDraftsBadge();renderCash();renderCashSummary();refreshSelects();alert('Dati caricati.');}catch(err){alert('File non valido.');}};r.readAsText(f);});
   $('wipe').addEventListener('click',()=>{if(confirm('Cancellare TUTTI i movimenti? (book e ID restano)')){moves=[];save();renderMoves();}});
   $('fix-orphan-pids').addEventListener('click',()=>{
     const validLabels=new Set(ids.map(x=>x.label));
@@ -3868,7 +3900,7 @@
       if(perm!=='granted'){autobkStatus('Permesso non concesso: premi "Salva ora" e conferma nel popup del browser.');return false;}
       const fh=await backupDir.getFileHandle('profit-tracker-backup.json',{create:true});
       const w=await fh.createWritable();
-      await w.write(JSON.stringify({books,tipos,games,ids,moves,drafts,recurring,promos,cashmoves,cashStart,cashActual,savedAt:new Date().toISOString()},null,2));
+      await w.write(JSON.stringify({books,tipos,games,infos,ids,moves,drafts,recurring,promos,cashmoves,cashStart,cashActual,savedAt:new Date().toISOString()},null,2));
       await w.close();
       autobkStatus(`Ultimo salvataggio automatico: ${new Date().toLocaleTimeString('it-IT')} in "${backupDir.name}".`);
       return true;
@@ -4038,7 +4070,7 @@
         {range:GS_TABS.cashmoves.name+'!A1:A'+GS_TABS.cashmoves.maxRows,values:gsPad(cashmoves.map(b=>JSON.stringify(b)),GS_TABS.cashmoves.maxRows)},
         {range:GS_TABS.promos.name+'!A1:A'+GS_TABS.promos.maxRows,values:gsPad(promos.map(b=>JSON.stringify(b)),GS_TABS.promos.maxRows)},
         {range:GS_TABS.savedMultiples.name+'!A1:A'+GS_TABS.savedMultiples.maxRows,values:gsPad(savedMultiplesRaw.map(b=>JSON.stringify(b)),GS_TABS.savedMultiples.maxRows)},
-        {range:'Meta!A1:A9',values:[[JSON.stringify(cashStart)],[JSON.stringify(cashActual)],[tgCfgRaw],[promoCfgRaw],[JSON.stringify(cashActualTs)],[String(rsStakeGlobal)+'|'+String(rsTpGlobal)],[JSON.stringify(rsFunRules)],[JSON.stringify({v:cashManual,ts:cashManualTs})],[JSON.stringify(rsPresets)]]}
+        {range:'Meta!A1:A10',values:[[JSON.stringify(cashStart)],[JSON.stringify(cashActual)],[tgCfgRaw],[promoCfgRaw],[JSON.stringify(cashActualTs)],[String(rsStakeGlobal)+'|'+String(rsTpGlobal)],[JSON.stringify(rsFunRules)],[JSON.stringify({v:cashManual,ts:cashManualTs})],[JSON.stringify(rsPresets)],[JSON.stringify(infos)]]}
       ];
       await gsApi('/values:batchUpdate',{method:'POST',body:JSON.stringify({valueInputOption:'RAW',data})});
       localStorage.setItem('tk_gs_last_sync',new Date().toISOString());
@@ -4052,7 +4084,7 @@
   async function loadFromSheets(){
     if(!gsCfg||!gsCfg.enabled)return null;
     await gsEnsureTabs();
-    const ranges=[...Object.values(GS_TABS).map(t=>t.name+'!A:A'),'Meta!A1:A9'];
+    const ranges=[...Object.values(GS_TABS).map(t=>t.name+'!A:A'),'Meta!A1:A10'];
     const qs=ranges.map(r=>'ranges='+encodeURIComponent(r)).join('&');
     const res=await gsApi('/values:batchGet?'+qs,{method:'GET'});
     const vrs=res.valueRanges||[];
@@ -4066,10 +4098,11 @@
     try{cats=metaRows[4]?JSON.parse(metaRows[4][0]):{};}catch(e){cats={};}
     const rsStake=metaRows[5]?numParse(metaRows[5][0]):null;
     const rsTp=metaRows[5]?numParse(String(metaRows[5][0]).split('|')[1]):null;
+    let infosIn=null;try{infosIn=metaRows[9]?JSON.parse(metaRows[9][0]):null;}catch(e){infosIn=null;}
     let rsPresetsIn=null;try{rsPresetsIn=metaRows[8]?JSON.parse(metaRows[8][0]):null;}catch(e){rsPresetsIn=null;}
     let rsFunRulesIn=null;try{rsFunRulesIn=metaRows[6]?JSON.parse(metaRows[6][0]):null;}catch(e){rsFunRulesIn=null;}
     let cmIn=null;try{cmIn=metaRows[7]?JSON.parse(metaRows[7][0]):null;}catch(e){cmIn=null;}
-    return {books:byIdx.books,tipos:byIdx.tipos,games:byIdx.games,ids:byIdx.ids,moves:byIdx.moves,drafts:byIdx.drafts,recurring:byIdx.recurring,cashmoves:byIdx.cashmoves,promos:byIdx.promos,savedMultiples:byIdx.savedMultiples,cashStart:cs,cashActual:ca,tgCfg:tg,promoCfg:pc,cashActualTs:cats,rsStake,rsTp,rsFunRules:rsFunRulesIn,rsPresets:rsPresetsIn,cashManual:cmIn};
+    return {books:byIdx.books,tipos:byIdx.tipos,games:byIdx.games,ids:byIdx.ids,moves:byIdx.moves,drafts:byIdx.drafts,recurring:byIdx.recurring,cashmoves:byIdx.cashmoves,promos:byIdx.promos,savedMultiples:byIdx.savedMultiples,cashStart:cs,cashActual:ca,tgCfg:tg,promoCfg:pc,cashActualTs:cats,rsStake,rsTp,rsFunRules:rsFunRulesIn,rsPresets:rsPresetsIn,infos:infosIn,cashManual:cmIn};
   }
   // =====================================================================================
   // ===== FIREBASE FIRESTORE: stesso progetto e stesso accesso del tracker del chiosco =====
@@ -4166,7 +4199,7 @@
     try{pc=JSON.parse(localStorage.getItem('tk_promo_cfg')||'{}');}catch(e){}
     const idsS=ids.map(x=>{const {pp_pass,pin,cc_num,cc_sca,cc_cvv,...rest}=x;return {...rest,books:(x.books||[]).map(b=>({book:b.book,limit:b.limit}))};});
     return {arrays:{moves,cashmoves,drafts,recurring,promos:(typeof promos!=='undefined'&&Array.isArray(promos))?promos:[],savedMultiples:sm,ids:idsS},
-      config:{books,tipos,games,cashStart,cashActual,cashActualTs,cashManual:{v:cashManual,ts:cashManualTs},rsStake:rsStakeGlobal,rsTp:rsTpGlobal,rsFunRules,rsPresets,...((tg&&(tg.token||tg.chat))?{tgCfg:tg}:{}),promoCfg:pc}}; // Telegram vuoto: non lo invio, così non cancella quello buono
+      config:{books,tipos,games,infos,cashStart,cashActual,cashActualTs,cashManual:{v:cashManual,ts:cashManualTs},rsStake:rsStakeGlobal,rsTp:rsTpGlobal,rsFunRules,rsPresets,...((tg&&(tg.token||tg.chat))?{tgCfg:tg}:{}),promoCfg:pc}}; // Telegram vuoto: non lo invio, così non cancella quello buono
   }
   const fbId=r=>{let id=r.uid||r.id||r.key||r.label;id=id!==undefined&&id!==null&&id!==''?String(id):'h_'+fbHash(JSON.stringify(r));return id.replace(/[^A-Za-z0-9_.\-]/g,'_').slice(0,140);};
   function fbMaps(snap){const m={};FB_ARR.forEach(([c,key])=>{const mm={};(snap.arrays[key]||[]).forEach(r=>{if(r&&typeof r==='object')mm[fbId(r)]=r;});m[c]=mm;});m.pt_config=snap.config;return m;}
@@ -4207,7 +4240,7 @@
   }
   function fbExt(maps){
     const a=c=>Object.values(maps[c]||{}),cfg=maps.pt_config||{};
-    return {books:cfg.books,tipos:cfg.tipos,games:cfg.games,ids:a('pt_ids'),moves:a('pt_moves'),drafts:a('pt_drafts'),recurring:a('pt_recurring'),
+    return {books:cfg.books,tipos:cfg.tipos,games:cfg.games,infos:cfg.infos,ids:a('pt_ids'),moves:a('pt_moves'),drafts:a('pt_drafts'),recurring:a('pt_recurring'),
       cashmoves:a('pt_cash'),promos:a('pt_promos'),savedMultiples:a('pt_multiple'),cashStart:cfg.cashStart,cashActual:cfg.cashActual,cashActualTs:cfg.cashActualTs,
       cashManual:cfg.cashManual,rsStake:cfg.rsStake,rsTp:cfg.rsTp,rsFunRules:cfg.rsFunRules,rsPresets:cfg.rsPresets,tgCfg:cfg.tgCfg,promoCfg:cfg.promoCfg};
   }
@@ -4319,7 +4352,7 @@
   document.addEventListener('visibilitychange',()=>{if(!document.hidden&&fbActive())fbSync();});
   // più schede aperte (anche browser + icona Home): quando un'altra scheda salva, questa ricarica gli stessi dati
   // invece di restare indietro e poi sovrascriverli. Insieme ai dati riprendo anche lo stato della sincronizzazione.
-  const XTAB_KEYS=new Set(['tk_moves','tk_ids','tk_cash','tk_drafts','tk_recurring','tk_books','tk_tipos','tk_games','tk_cash_start','tk_cash_actual','tk_cash_actual_ts','tk_cash_manual','tk_promo','mb_saved_multiples','pt_fb_state']);
+  const XTAB_KEYS=new Set(['tk_moves','tk_ids','tk_cash','tk_drafts','tk_recurring','tk_books','tk_tipos','tk_games','tk_infos','tk_cash_start','tk_cash_actual','tk_cash_actual_ts','tk_cash_manual','tk_promo','mb_saved_multiples','pt_fb_state']);
   let xtabTimer=null;
   function xtabReload(){
     if(fbBusy){xtabTimer=setTimeout(xtabReload,500);return;}
@@ -5391,7 +5424,7 @@
     ).join(''):'<span class="sub">Nessuna ID in anagrafica.</span>';
     fillOpt($('tkm-type'),tipos.length?tipos:TK_TIPOS);
     fillOpt($('tkm-game'),games.length?games:TK_GAMES);
-    fillOpt($('tkm-info'),TK_INFOS);
+    fillOpt($('tkm-info'),infoOpts());
     $('tkm-type').value='Altro';$('tkm-game').value='Sport';
     $('tkm-date').value=new Date().toISOString().slice(0,10);
     $('tkm-bonus').value=pendingCalcMeta.bonus||'';
