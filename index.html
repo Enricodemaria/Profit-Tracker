@@ -1589,6 +1589,9 @@
       <div><label>Saldo finale €</label><input class="num" id="f-end" data-testid="f-end" placeholder="0"></div>
       <div><label>di cui Bonus €</label><input class="num" id="f-bonus" data-testid="f-bonus" placeholder="0"></div>
       <div><label>Ricaricato €</label><input class="num" id="f-reload" data-testid="f-reload" placeholder="0"></div>
+      <div><label>Puntata €</label><input class="num" id="f-stake" data-testid="f-stake" placeholder="facoltativa"></div>
+      <div><label>Quota</label><input class="num" id="f-quota" data-testid="f-quota" placeholder="facoltativa"></div>
+      <p class="sub full" style="margin:-4px 0 0">Con puntata e quota puoi lasciare vuoto il saldo finale: il movimento resta in sospeso e lo chiudi dall'elenco con V (vinta) o P (persa), che calcolano il saldo finale da soli.</p>
       <div class="full"><label>Note</label><input id="f-notes" data-testid="f-notes" placeholder="note libere..."></div>
     </div>
     <div class="modal-actions">
@@ -1910,7 +1913,7 @@
 <div class="overlay hidden" id="modal-drafts">
   <div class="modal" style="max-width:640px">
     <h3>Movimenti da completare</h3>
-    <p class="sub" id="drafts-mg-note" style="display:none">Maggiorate ancora senza esito: segnale Vinta o Persa direttamente da qui.</p>
+    <p class="sub" id="drafts-mg-note" style="display:none">Maggiorate e giocate con quota ancora senza esito: segnale Vinta o Persa direttamente da qui.</p>
     <div id="drafts-mg-list" data-testid="drafts-mg-list"></div>
     <p class="sub" style="margin-top:14px">Movimenti singoli o multipli messi in pausa: riprendili per finirli, solo allora entrano nell'elenco Movimenti.</p>
     <div id="drafts-list" data-testid="drafts-list"></div>
@@ -2153,8 +2156,11 @@
     $('rec-desc').value='';$('rec-amount').value='';$('rec-start').value='';
     save();runRecurring();renderRecurring();renderMoves();
   });
+  // movimento matched con puntata e quota ancora senza esito (saldo finale vuoto)
+  const betPending=m=>m.type!=='Maggiorate'&&m.type!=='Rimborso Slot'&&m.result===null&&numParse(m.quota)>0&&numParse(m.stake)>0;
   const profitOf=m=>{
     if(m.type==='Maggiorate'&&!m.result)return 0;
+    if(betPending(m))return 0;
     if(m.type==='Rimborso Slot'){
       const netto=(numParse(m.end)||0)-(numParse(m.start)||0);
       const bm=(m.rsBonusMon===undefined||m.rsBonusMon==='')?0:(numParse(m.rsBonusMon)||0);
@@ -2367,6 +2373,12 @@
   // ---- movimenti table ----
   function markMaggiorata(mUid,result){
     const m=moves.find(x=>x.uid===mUid);if(!m)return;
+    if(m.type!=='Maggiorate'){ // matched con quota: saldo finale = iniziale + ricaricato + vincita (o − puntata)
+      const st=numParse(m.stake)||0,q=numParse(m.quota)||0;if(!st||!q)return;
+      const P=result==='v'?st*(q-1):-st;
+      m.end=((numParse(m.start)||0)+(numParse(m.reload)||0)+P).toFixed(2);m.result=result;
+      save();renderMoves();return;
+    }
     const stake=numParse(m.stake)||0,quota=numParse(m.quota)||0,bonus=numParse(m.bonus)||0;
     if(!stake||!quota){alert('Per calcolare il profitto in automatico servono Puntata e Quota su questa maggiorata (modificala prima, oppure inserisci il profitto a mano).');return;}
     const totalProfit=result==='v'?(stake*(quota-1)):(-(stake-bonus));
@@ -2536,18 +2548,20 @@
 
   // una riga per movimento (da sola, o dentro un gruppo aperto)
   function mbRow(m,child){
-      const p=profitOf(m);
+      const p=profitOf(m),pend=betPending(m);
       const tr=document.createElement('tr');tr.className='clickable';
       tr.innerHTML=`<td>${esc(m.date)}</td><td>${esc(m.pid)}</td><td>${esc(m.book)}</td><td>${esc(m.type)}</td><td>${esc(m.game)}</td><td>${esc(m.info)}</td>`+
         `<td class="num">${fmt(numParse(m.start)||0)}</td>`+
-        `<td class="num">${fmt(numParse(m.end)||0)}</td>`+
+        `<td class="num">${pend?`<span style="color:var(--dim);font-size:10px">${fmt(numParse(m.stake))} @ </span>${String(m.quota).replace('.',',')}`:fmt(numParse(m.end)||0)}</td>`+
         `<td class="num" style="color:var(--amber)">${fmt(numParse(m.bonus)||0)}</td>`+
         `<td class="num"${(numParse(m.reload)||0)?' style="color:var(--blue)"':''}>${fmt(numParse(m.reload)||0)}</td>`+
-        `<td class="num ${p>=0?'pos':'neg'}">${fmt(p)}</td>`+
+        `<td class="num ${pend?'':(p>=0?'pos':'neg')}">${pend?'in sospeso':fmt(p)}</td>`+
         `<td class="note-cell" title="${escA(m.notes)}">${esc(m.notes)}</td>`+
-        `<td style="white-space:nowrap"><button class="iconbtn" data-edit="${m.uid}" title="Modifica">✎</button><button class="iconbtn del" data-del="${m.uid}" title="Elimina">✕</button></td>`;
+        `<td style="white-space:nowrap">${pend?`<button class="stbtn book" data-mgwin="${m.uid}" title="Segna vinta">V</button><button class="stbtn banca" data-mglose="${m.uid}" title="Segna persa">P</button>`:''}<button class="iconbtn" data-edit="${m.uid}" title="Modifica">✎</button><button class="iconbtn del" data-del="${m.uid}" title="Elimina">✕</button></td>`;
       tr.querySelector('[data-del]').addEventListener('click',e=>{e.stopPropagation();if(confirm('Eliminare questo movimento?')){moves=moves.filter(x=>x.uid!==m.uid);save();renderMoves();}});
       tr.querySelector('[data-edit]').addEventListener('click',e=>{e.stopPropagation();openSingle(m.uid);});
+      const wb=tr.querySelector('[data-mgwin]');if(wb)wb.addEventListener('click',e=>{e.stopPropagation();markMaggiorata(m.uid,'v');renderDraftsBadge();});
+      const lb=tr.querySelector('[data-mglose]');if(lb)lb.addEventListener('click',e=>{e.stopPropagation();markMaggiorata(m.uid,'p');renderDraftsBadge();});
       tr.addEventListener('click',()=>openSingle(m.uid));
       if(child)tr.classList.add('rs-child');
       return tr;
@@ -2779,24 +2793,30 @@
     $('f-reload').value=m?m.reload??'':'';
     $('f-end').value=m?m.end??'':'';
     $('f-bonus').value=m?m.bonus??'':'';
+    $('f-stake').value=m?m.stake??'':'';$('f-quota').value=m?m.quota??'':'';
     $('f-notes').value=m?m.notes||'':'';
     $('modal-single').classList.remove('hidden');
   }
   $('btnSingle').addEventListener('click',()=>openSingle(null));
   let resumingDraftId=null;
   $('single-pause').addEventListener('click',()=>{
-    const rec={date:val('f-date'),book:val('f-book'),pid:val('f-id'),type:val('f-type'),game:val('f-game'),info:val('f-info'),start:val('f-start'),reload:val('f-reload'),end:val('f-end'),bonus:val('f-bonus'),notes:val('f-notes')};
+    const rec={date:val('f-date'),book:val('f-book'),pid:val('f-id'),type:val('f-type'),game:val('f-game'),info:val('f-info'),start:val('f-start'),reload:val('f-reload'),end:val('f-end'),bonus:val('f-bonus'),notes:val('f-notes'),stake:val('f-stake'),quota:val('f-quota')};
     if(resumingDraftId){const i=drafts.findIndex(d=>d.id===resumingDraftId);if(i>=0)drafts[i]={...drafts[i],data:rec,editUid:editUid||null};}
     else {drafts.unshift({id:uid(),kind:'single',data:rec,editUid:editUid||null,createdAt:new Date().toISOString()});}
     resumingDraftId=null;
     save();renderDraftsBadge();$('modal-single').classList.add('hidden');
   });
   $('single-save').addEventListener('click',()=>{
-    const rec={date:val('f-date'),book:val('f-book'),pid:val('f-id'),type:val('f-type'),game:val('f-game'),info:val('f-info'),start:val('f-start'),reload:val('f-reload'),end:val('f-end'),bonus:val('f-bonus'),notes:val('f-notes')};
-    if(editUid){const i=moves.findIndex(x=>x.uid===editUid);if(i>=0)moves[i]={...moves[i],...rec};}
+    const rec={date:val('f-date'),book:val('f-book'),pid:val('f-id'),type:val('f-type'),game:val('f-game'),info:val('f-info'),start:val('f-start'),reload:val('f-reload'),end:val('f-end'),bonus:val('f-bonus'),notes:val('f-notes'),stake:val('f-stake'),quota:val('f-quota')};
+    const isBet=numParse(rec.stake)>0&&numParse(rec.quota)>0;
+    if(isBet&&rec.end.trim()==='')rec.result=null; // in sospeso: si chiude con V/P
+    else if(!isBet)rec.result=undefined;
+    else {const old=editUid&&moves.find(x=>x.uid===editUid);rec.result=old&&old.result?old.result:undefined;}
+    if(rec.result===undefined)delete rec.result;
+    if(editUid){const i=moves.findIndex(x=>x.uid===editUid);if(i>=0){moves[i]={...moves[i],...rec};if(!('result' in rec))delete moves[i].result;}}
     else {rec.uid=uid();moves.unshift(rec);}
     if(resumingDraftId){drafts=drafts.filter(d=>d.id!==resumingDraftId);resumingDraftId=null;renderDraftsBadge();}
-    save();renderMoves();$('modal-single').classList.add('hidden');
+    save();renderMoves();renderDraftsBadge();$('modal-single').classList.add('hidden');
   });
 
   // ---- batch ----
@@ -3302,7 +3322,7 @@
 
   function renderDraftsBadge(){
     const b=$('drafts-badge');
-    const n=drafts.length+moves.filter(m=>m.type==='Maggiorate'&&!m.result).length;
+    const n=drafts.length+moves.filter(m=>(m.type==='Maggiorate'&&!m.result)||betPending(m)).length;
     if(n){b.textContent=n;b.classList.remove('hidden');}
     else b.classList.add('hidden');
   }
@@ -3322,12 +3342,13 @@
     $('f-reload').value=m.reload??'';
     $('f-end').value=m.end??'';
     $('f-bonus').value=m.bonus??'';
+    $('f-stake').value=m.stake??'';$('f-quota').value=m.quota??'';
     $('f-notes').value=m.notes||'';
     $('modal-drafts').classList.add('hidden');
     $('modal-single').classList.remove('hidden');
   }
   function renderDrafts(){
-    const pendingMg=moves.filter(m=>m.type==='Maggiorate'&&!m.result);
+    const pendingMg=moves.filter(m=>(m.type==='Maggiorate'&&!m.result)||betPending(m));
     $('drafts-mg-note').style.display=pendingMg.length?'block':'none';
     $('drafts-mg-list').innerHTML=pendingMg.map(m=>`<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:10px 0;border-bottom:1px solid var(--line)">
         <span style="flex:1;min-width:150px">${esc(m.date||'—')} · ${esc(m.book||'—')}${m.pid?' · '+esc(m.pid):''} — Punt. ${fmt(numParse(m.stake)||0)} @ ${m.quota?String(m.quota).replace('.',','):'–'}</span>
