@@ -1439,6 +1439,11 @@
       </div>
       <div id="infos-list" data-testid="infos-list"></div>
     </div>
+    <div class="card" style="margin-bottom:20px" id="rsinfo-card">
+      <h2><span class="dot"></span>Vecchi movimenti con Info "Rimborso Slot"</h2>
+      <p class="sub">Movimenti del vecchio sistema: hanno Info "Rimborso Slot" ma una tipologia normale (es. Ricorrente), quindi il Riepilogo li conta nel Matched Betting. Per ogni mese puoi <b>convertirli</b> in Rimborso Slot oppure <b>eliminarli</b> se sono un doppione (es. bonus già contati nei Rimborso Slot). Gli eliminati restano copiati su questo dispositivo.</p>
+      <div id="rsinfo-list" data-testid="rsinfo-list"></div>
+    </div>
     <div class="card" style="margin-bottom:20px">
       <h2><span class="dot"></span>Movimenti periodici</h2>
       <p class="sub">Genera automaticamente un movimento ricorrente (es. un abbonamento mensile) senza doverlo inserire ogni volta a mano.</p>
@@ -3417,6 +3422,7 @@
     $('games-list').querySelectorAll('[data-rmgame]').forEach(b=>b.addEventListener('click',()=>{games.splice(+b.dataset.rmgame,1);save();renderSetup();refreshSelects();}));
     $('games-list').querySelectorAll('[data-upgame]').forEach(b=>b.addEventListener('click',()=>{const i=+b.dataset.upgame;if(i>0){[games[i-1],games[i]]=[games[i],games[i-1]];save();renderSetup();refreshSelects();}}));
     $('games-list').querySelectorAll('[data-downgame]').forEach(b=>b.addEventListener('click',()=>{const i=+b.dataset.downgame;if(i<games.length-1){[games[i+1],games[i]]=[games[i],games[i+1]];save();renderSetup();refreshSelects();}}));
+    renderRsInfoTool();
     const nInfo=v=>moves.filter(m=>m.info===v).length;
     $('infos-list').innerHTML=infos.map((g,i)=>`<span class="chip">${esc(g)}<button class="iconbtn" data-upinfo="${i}" title="Sposta su" ${i===0?'disabled':''} style="padding:2px 4px">↑</button><button class="iconbtn" data-downinfo="${i}" title="Sposta giù" ${i===infos.length-1?'disabled':''} style="padding:2px 4px">↓</button><button class="iconbtn" data-edinfo="${i}" title="Rinomina" style="padding:2px 4px">✎</button><button data-rminfo="${i}">✕</button></span>`).join('')||'<p class="note">Nessuna voce: il menu Info avrà solo la voce vuota.</p>';
     $('infos-list').querySelectorAll('[data-rminfo]').forEach(b=>b.addEventListener('click',()=>{const v=infos[+b.dataset.rminfo],n=nInfo(v);
@@ -4921,6 +4927,29 @@
     save();renderMoves();if(!$('summary').classList.contains('hidden'))renderSummary();
     setTimeout(()=>alert(`Correzione fatta: eliminati ${dup.length} movimenti di gennaio 2026 con Info "Rimborso Slot" (${fmt(tot)}), che erano contati due volte.`),300);
     return true;
+  }
+  // strumento di Setup: vecchi movimenti con Info "Rimborso Slot" e tipologia normale, mese per mese
+  function isOldRsInfo(m){return m.type!=='Rimborso Slot'&&String(m.info||'').trim().toLowerCase()==='rimborso slot';}
+  function renderRsInfoTool(){
+    const box=$('rsinfo-list');if(!box)return;
+    const byMo=new Map();moves.filter(isOldRsInfo).forEach(m=>{const k=(m.date||'').slice(0,7)||'—';if(!byMo.has(k))byMo.set(k,[]);byMo.get(k).push(m);});
+    const ks=[...byMo.keys()].sort();
+    if(!ks.length){box.innerHTML='<p class="note">Nessun movimento di questo tipo: è tutto a posto.</p>';return;}
+    box.innerHTML=`<table><thead><tr><th>Mese</th><th class="num">Movimenti</th><th class="num">Totale</th><th></th></tr></thead><tbody>${ks.map(k=>{const g=byMo.get(k),t=g.reduce((s,m)=>s+profitOf(m),0);
+      return `<tr><td>${k==='—'?'senza data':(MONTHS[+k.slice(5,7)-1]+' '+k.slice(0,4))}</td><td class="num">${g.length}</td><td class="num ${t>=0?'pos':'neg'}">${fmt(t)}</td>`+
+      `<td style="white-space:nowrap;text-align:right"><button class="btn ghost" style="padding:4px 10px" data-rsiconv="${k}">Converti</button> <button class="btn ghost" style="padding:4px 10px;color:var(--red)" data-rsidel="${k}">Elimina</button></td></tr>`;}).join('')}</tbody></table>`;
+    const pick=k=>moves.filter(m=>isOldRsInfo(m)&&((m.date||'').slice(0,7)||'—')===k);
+    const lbl=k=>k==='—'?'senza data':(MONTHS[+k.slice(5,7)-1]+' '+k.slice(0,4));
+    box.querySelectorAll('[data-rsidel]').forEach(b=>b.addEventListener('click',()=>{const k=b.dataset.rsidel,g=pick(k),t=g.reduce((s,m)=>s+profitOf(m),0);
+      if(!confirm(`Eliminare ${g.length} movimenti di ${lbl(k)} con Info "Rimborso Slot" (totale ${fmt(t)})?\n\nUsalo solo se sono un doppione.`))return;
+      try{const old=JSON.parse(localStorage.getItem('tk_removed_rsinfo')||'[]');localStorage.setItem('tk_removed_rsinfo',JSON.stringify([...old,...g]));}catch(e){}
+      const del=new Set(g.map(m=>m.uid));moves=moves.filter(m=>!del.has(m.uid));save();renderMoves();renderSetup();}));
+    box.querySelectorAll('[data-rsiconv]').forEach(b=>b.addEventListener('click',()=>{const k=b.dataset.rsiconv,g=pick(k),t=g.reduce((s,m)=>s+profitOf(m),0);
+      if(!confirm(`Convertire ${g.length} movimenti di ${lbl(k)} (totale ${fmt(t)}) in Rimborso Slot?\n\nIl totale resta uguale: passano da Matched Betting a Rimborso Slot.`))return;
+      const ids=new Set(g.map(m=>m.uid));
+      // Rimborso Slot conta saldo finale − iniziale + bonus monetizzato: ci metto il profitto di prima, così non cambia
+      moves=moves.map(m=>ids.has(m.uid)?{...m,type:'Rimborso Slot',game:'Slot',info:'',start:'0',end:String(Math.round(profitOf(m)*100)/100),reload:'',bonus:'',rsBonusMon:'',rsEV:'',rsOld:{start:m.start,end:m.end,reload:m.reload,bonus:m.bonus,type:m.type}}:m);
+      save();renderMoves();renderSetup();}));
   }
   function applyRemoteData(data){
     load(data);
