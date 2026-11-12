@@ -1120,8 +1120,14 @@
 
     <div class="card" style="margin-bottom:20px;overflow-x:auto;padding-left:14px;padding-right:14px">
       <h2><span class="dot"></span>Dettaglio Matched Betting</h2>
-      <p class="sub">Le tipologie che compongono "Matched Betting" nella tabella sopra. <b>*</b> Fun bonus resta solo di riferimento, non viene sommato nel Totale.</p>
+      <p class="sub">Le tipologie che compongono "Matched Betting" nella tabella sopra.</p>
       <table id="monthly-detail-table" data-testid="monthly-detail-table"></table>
+    </div>
+
+    <div class="card" style="margin-bottom:20px;overflow-x:auto;padding-left:14px;padding-right:14px">
+      <h2><span class="dot"></span>Dettaglio per Info</h2>
+      <p class="sub">Profitto dei movimenti per voce di "Info" (le voci si gestiscono in Setup). È solo di riferimento: questi movimenti sono già contati nelle tabelle sopra.</p>
+      <table id="monthly-info-table" data-testid="monthly-info-table"></table>
     </div>
 
     <div class="card" style="margin-bottom:20px">
@@ -4723,7 +4729,7 @@
 
     // tabella di dettaglio: spacchetta "Matched Betting" nelle sue tipologie (Maggiorate e Rimborso Slot escluse, hanno già la loro colonna sopra)
     const detailTipos=tipos.filter(t=>t!=='Maggiorate');
-    const REF_COLS=['Fun bonus'];
+    const REF_COLS=[];
     const gridD={},gridDI={};
     monthsSet.forEach(mo=>{gridD[mo]={};detailTipos.forEach(t=>gridD[mo][t]=0);gridDI[mo]={};REF_COLS.forEach(c=>gridDI[mo][c]=0);});
     moves.forEach(m=>{
@@ -4744,6 +4750,19 @@
     const footYD=`<tr style="font-weight:700"><td>Totale ${selYear}</td>${mkCell(yTotD)}${detailTipos.map(t=>mkCell(colYD[t])).join('')}${REF_COLS.map(c=>`<td class="num" style="color:var(--amber)">${fmt(colYDI[c])}</td>`).join('')}</tr>`;
     const footGD=`<tr style="font-weight:700"><td style="color:var(--green)">Grand Totale</td>${mkCell(totMB)}${detailTipos.map(t=>mkCell(colGD[t])).join('')}${REF_COLS.map(c=>`<td class="num" style="color:var(--amber)">${fmt(colGDI[c])}</td>`).join('')}</tr>`;
     const ncolD=detailTipos.length+REF_COLS.length+2;
+    // tabella per Info: tutte le voci di Setup, più quelle tolte ma ancora usate da qualche movimento
+    const infoCols=[...infos,...[...new Set(moves.map(m=>m.info).filter(v=>v&&!infos.includes(v)))].sort()];
+    const gI={};monthsSet.forEach(mo=>{gI[mo]={};infoCols.forEach(c=>gI[mo][c]=0);});
+    moves.forEach(m=>{if(!m.info||!infoCols.includes(m.info))return;const mo=(m.date||'').slice(0,7);if(!mo||!gI[mo])return;gI[mo][m.info]+=profitOf(m);});
+    const yI={},tI={};infoCols.forEach(c=>{yI[c]=0;tI[c]=0;});
+    monthsSet.forEach(mo=>infoCols.forEach(c=>tI[c]+=gI[mo][c]));
+    let bodyI='';
+    yMonths.forEach(mo=>{bodyI+=`<tr><td>${mlabel(mo)}</td>${infoCols.map(c=>{yI[c]+=gI[mo][c];return mkCell(gI[mo][c]);}).join('')}</tr>`;});
+    const thI=`<thead><tr><th>Mese</th>${infoCols.map(c=>`<th class="num">${esc(c)}</th>`).join('')}</tr></thead>`;
+    $('monthly-info-table').innerHTML=!infoCols.length?'<tbody><tr><td><span class="note">Nessuna voce di Info: aggiungile in Setup.</span></td></tr></tbody>':
+      thI+'<tbody>'+(yMonths.length?bodyI:`<tr><td colspan="${infoCols.length+1}"><span class="note">Nessun dato per ${selYear}.</span></td></tr>`)+
+      `<tr style="font-weight:700"><td>Totale ${selYear}</td>${infoCols.map(c=>mkCell(yI[c])).join('')}</tr>`+
+      `<tr style="font-weight:700"><td style="color:var(--green)">Grand Totale</td>${infoCols.map(c=>mkCell(tI[c])).join('')}</tr></tbody>`;
     $('monthly-detail-table').innerHTML=thD+'<tbody>'+(yMonths.length?bodyD:`<tr><td colspan="${ncolD}"><span class="note">Nessun dato per ${selYear}.</span></td></tr>`)+footYD+footGD+'</tbody>';
 
     // totale per anno
