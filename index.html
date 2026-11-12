@@ -4751,9 +4751,13 @@
     const footGD=`<tr style="font-weight:700"><td style="color:var(--green)">Grand Totale</td>${mkCell(totMB)}${detailTipos.map(t=>mkCell(colGD[t])).join('')}${REF_COLS.map(c=>`<td class="num" style="color:var(--amber)">${fmt(colGDI[c])}</td>`).join('')}</tr>`;
     const ncolD=detailTipos.length+REF_COLS.length+2;
     // tabella per Info: tutte le voci di Setup, più quelle tolte ma ancora usate da qualche movimento
-    const infoCols=[...infos,...[...new Set(moves.map(m=>m.info).filter(v=>v&&!infos.includes(v)))].sort()];
+    // stessa voce scritta in modi diversi (maiuscole, spazi: "Fun Bonus" e "Fun bonus") = una colonna sola
+    const infoKey=v=>String(v||'').trim().replace(/\s+/g,' ').toLowerCase();
+    const infoColOf={};infos.forEach(c=>{if(!infoColOf[infoKey(c)])infoColOf[infoKey(c)]=c;});
+    const extraCols=[];moves.forEach(m=>{const k=infoKey(m.info);if(k&&!infoColOf[k]){infoColOf[k]=String(m.info).trim();extraCols.push(infoColOf[k]);}});
+    const infoCols=[...new Set([...infos.filter(c=>infoColOf[infoKey(c)]===c),...extraCols.sort()])];
     const gI={};monthsSet.forEach(mo=>{gI[mo]={};infoCols.forEach(c=>gI[mo][c]=0);});
-    moves.forEach(m=>{if(!m.info||!infoCols.includes(m.info))return;const mo=(m.date||'').slice(0,7);if(!mo||!gI[mo])return;gI[mo][m.info]+=profitOf(m);});
+    moves.forEach(m=>{const c=infoColOf[infoKey(m.info)];if(!c)return;const mo=(m.date||'').slice(0,7);if(!mo||!gI[mo])return;gI[mo][c]+=profitOf(m);});
     const yI={},tI={};infoCols.forEach(c=>{yI[c]=0;tI[c]=0;});
     monthsSet.forEach(mo=>infoCols.forEach(c=>tI[c]+=gI[mo][c]));
     let bodyI='';
