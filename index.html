@@ -1119,13 +1119,19 @@
     </div>
 
     <div class="card" style="margin-bottom:20px;overflow-x:auto;padding-left:14px;padding-right:14px">
-      <h2><span class="dot"></span>Dettaglio Matched Betting</h2>
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap">
+        <h2><span class="dot"></span>Dettaglio Matched Betting</h2>
+        <select id="mt-year-d" data-testid="mt-year-d" class="mt-yearsel" style="max-width:120px"></select>
+      </div>
       <p class="sub">Le tipologie che compongono "Matched Betting" nella tabella sopra.</p>
       <table id="monthly-detail-table" data-testid="monthly-detail-table"></table>
     </div>
 
     <div class="card" style="margin-bottom:20px;overflow-x:auto;padding-left:14px;padding-right:14px">
-      <h2><span class="dot"></span>Dettaglio per Info</h2>
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap">
+        <h2><span class="dot"></span>Dettaglio per Info</h2>
+        <select id="mt-year-i" data-testid="mt-year-i" class="mt-yearsel" style="max-width:120px"></select>
+      </div>
       <p class="sub">Profitto dei movimenti per voce di "Info" (le voci si gestiscono in Setup). È solo di riferimento: questi movimenti sono già contati nelle tabelle sopra.</p>
       <table id="monthly-info-table" data-testid="monthly-info-table"></table>
     </div>
@@ -4710,8 +4716,10 @@
     const mlabel=mo=>{const [y,mm]=mo.split('-');return MONTHS[+mm-1]+' '+y;};
     const yearsM=[...new Set(monthsSet.map(mo=>mo.slice(0,4)))].sort();
     if(!selYear||!yearsM.includes(selYear))selYear=yearsM[yearsM.length-1]||'';
-    $('mt-year').innerHTML=yearsM.map(y=>`<option value="${y}" ${y===selYear?'selected':''}>${y}</option>`).join('')||'<option>—</option>';
-    $('mt-year').onchange=e=>{selYear=e.target.value;renderSummary();};
+    // stesso anno per Totali mensili e per le due tabelle di dettaglio: cambiarlo in una le aggiorna tutte
+    ['mt-year','mt-year-d','mt-year-i'].forEach(id=>{const el=$(id);if(!el)return;
+      el.innerHTML=yearsM.map(y=>`<option value="${y}" ${y===selYear?'selected':''}>${y}</option>`).join('')||'<option>—</option>';
+      el.onchange=e=>{selYear=e.target.value;renderSummary();};});
     const yMonths=monthsSet.filter(mo=>mo.startsWith(selYear));
     const mkCell=v=>`<td class="num ${v>=0?'pos':'neg'}">${v?fmt(v):'–'}</td>`;
     let th=`<thead><tr><th>Mese</th><th class="num">Totale</th><th class="num">Matched Betting</th><th class="num">Maggiorate</th><th class="num">Rimborso Slot</th></tr></thead>`;
