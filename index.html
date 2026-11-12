@@ -4906,9 +4906,26 @@
   gsInit();
   load();runRecurring();refreshSelects();renderMoves();renderSetup();renderRecurring();renderAnag();renderCash();renderCashSummary();renderDraftsBadge();applyTheme(localStorage.getItem('tk_theme')||(window.matchMedia&&window.matchMedia('(prefers-color-scheme: light)').matches?'light':'dark'));autobkInit();
   // dati in arrivo (Google Sheets o Firebase): li applica e aggiorna tutte le schermate
+  // correzione una tantum (12/11/2026): a gennaio 2026 i bonus delle Rimborso Slot (Info "Rimborso Slot",
+  // tipologia Ricorrente, 770,07€) sono già contati nei movimenti Rimborso Slot: erano un doppione.
+  // Elimina solo se il totale torna esattamente; una copia resta in tk_removed_rsjan26 per sicurezza.
+  function fixRsJan26(){
+    if(localStorage.getItem('tk_fix_rsjan26')==='done')return false;
+    const isDup=m=>m.type!=='Rimborso Slot'&&String(m.info||'').trim().toLowerCase()==='rimborso slot'&&(m.date||'').startsWith('2026-01');
+    const dup=moves.filter(isDup);if(!dup.length)return false;
+    const tot=dup.reduce((s,m)=>s+profitOf(m),0);
+    if(Math.abs(tot-770.07)>0.01)return false; // dati diversi da quelli verificati: non tocco niente
+    try{localStorage.setItem('tk_removed_rsjan26',JSON.stringify(dup));}catch(e){}
+    moves=moves.filter(m=>!isDup(m));
+    localStorage.setItem('tk_fix_rsjan26','done');
+    save();renderMoves();if(!$('summary').classList.contains('hidden'))renderSummary();
+    setTimeout(()=>alert(`Correzione fatta: eliminati ${dup.length} movimenti di gennaio 2026 con Info "Rimborso Slot" (${fmt(tot)}), che erano contati due volte.`),300);
+    return true;
+  }
   function applyRemoteData(data){
     load(data);
     runRecurring();refreshSelects();renderMoves();renderSetup();renderRecurring();renderAnag();renderCash();renderCashSummary();renderDraftsBadge();
+    fixRsJan26();
     if(typeof loadPromo==='function'){loadPromo();if(typeof renderPromo==='function')renderPromo();}
     if(Array.isArray(data.savedMultiples)){localStorage.setItem('mb_saved_multiples',JSON.stringify(data.savedMultiples));if(typeof loadSaved==='function'){loadSaved();if(typeof renderSaved==='function')renderSaved();}}
     // Telegram: impostazioni vuote in arrivo non cancellano mai token e chat già presenti su questo dispositivo
@@ -4933,6 +4950,7 @@
     applyRemoteData(data);
     return data;
   }
+  fixRsJan26();
   if(fbActive()){
     fbSync();
   } else if(gsCfg&&gsCfg.enabled){
